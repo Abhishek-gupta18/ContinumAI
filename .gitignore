@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment and local configuration
+.env
+.env.*
+opencode.json
+
+# Local tooling
+.qodo/
+
+# Logs and runtime output
+*.log
+logs/
+pids/
+*.pid
+*.pid.lock
+
+# Test and build output
+coverage/
+dist/
+build/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
