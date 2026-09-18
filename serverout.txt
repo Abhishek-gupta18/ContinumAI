@@ -1,0 +1,3 @@
+Γùç injected env (3) from .env // tip: Γîÿ enable debugging { debug: true }
+Γùç injected env (0) from .env // tip: Γîÿ custom filepath { path: '/custom/path/.env' }
+ContinumAI gateway running on port 3000

@@ -1,6 +1,6 @@
 const { sendToOpenAI } = require("../providers/openai");
-const { sendToClaude } = require("../providers/claude");
-const providerOrder = ["openai", "claude"];
+const { sendToGemini } = require("../providers/gemini");
+const providerOrder = ["openai", "gemini"];
 
 async function handleChatRequest(req, res) {
   const normalizedRequest = req.body;
@@ -23,8 +23,8 @@ async function handleChatRequest(req, res) {
 
     if (provider === "openai") {
       result = await sendToOpenAI(currentRequest);
-    } else if (provider === "claude") {
-      result = await sendToClaude(currentRequest);
+    } else if (provider === "gemini") {
+      result = await sendToGemini(currentRequest);
     }
 
     servedProvider = provider;

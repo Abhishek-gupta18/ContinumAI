@@ -30,7 +30,7 @@ async function sendToClaude(normalizedRequest) {
 
     return { success: true, data: normalizedResponse };
   } catch (error) {
-    const structuredError = classifyError(error.statusCode, error);
+    const structuredError = classifyError(error.status, error);
     return { success: false, error: structuredError };
   }
 }
