@@ -1,0 +1,27 @@
+{
+  "head_id": "4f131c4d-0cad-453f-a61d-990c265d1212",
+  "nodes": {
+    "7d37db40-1f8e-4cdd-8179-74f54e9d46b6": {
+      "node_id": "7d37db40-1f8e-4cdd-8179-74f54e9d46b6",
+      "prev_id": null,
+      "session_id": "memtest1",
+      "type": "turn",
+      "content": "My name is Abhishek.",
+      "model_used": "gemini-3.6-flash",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-22T06:54:06.062Z"
+    },
+    "4f131c4d-0cad-453f-a61d-990c265d1212": {
+      "node_id": "4f131c4d-0cad-453f-a61d-990c265d1212",
+      "prev_id": "7d37db40-1f8e-4cdd-8179-74f54e9d46b6",
+      "session_id": "memtest1",
+      "type": "turn",
+      "content": "What is my name?",
+      "model_used": "gemini-3.6-flash",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-22T06:54:10.860Z"
+    }
+  }
+}
