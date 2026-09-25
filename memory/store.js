@@ -42,7 +42,59 @@ module.exports = {
       sessionData = JSON.parse(data);
     }
 
-    const prevId = sessionData ? sessionData.head_id : null;
+    let prevId = sessionData ? sessionData.head_id : null;
+
+    let turnCountSinceCheckpoint = 0;
+    let lastTurnNodeId = null;
+    let turnsSinceCheckpoint = [];
+
+    if (sessionData && sessionData.head_id) {
+      let currentId = sessionData.head_id;
+      while (currentId) {
+        const node = sessionData.nodes[currentId];
+        if (!node) break;
+
+        if (node.type === 'checkpoint') {
+          break;
+        }
+
+        if (node.type === 'turn') {
+          turnCountSinceCheckpoint++;
+          turnsSinceCheckpoint.push(node);
+          lastTurnNodeId = currentId;
+        }
+
+        if (turnCountSinceCheckpoint >= 5) break;
+
+        currentId = node.prev_id;
+      }
+    }
+
+    if (turnCountSinceCheckpoint >= 5) {
+      const fiveTurns = turnsSinceCheckpoint.slice(0, 5);
+      const concatenatedContent = fiveTurns.reverse().map((n) => n.content).join(' ');
+      const fifthTurnNodeId = fiveTurns[fiveTurns.length - 1].node_id;
+
+      const checkpointNode = {
+        node_id: generateNodeId(),
+        prev_id: fifthTurnNodeId,
+        session_id: sessionId,
+        type: 'checkpoint',
+        content: concatenatedContent,
+        model_used: '',
+        status_at_this_point: 'in_progress',
+        references: null,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (!sessionData) {
+        sessionData = { head_id: checkpointNode.node_id, nodes: {} };
+      } else {
+        sessionData.nodes[checkpointNode.node_id] = checkpointNode;
+      }
+
+      prevId = checkpointNode.node_id;
+    }
 
     const node = {
       node_id: generateNodeId(),

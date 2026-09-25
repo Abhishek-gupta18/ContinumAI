@@ -131,6 +131,43 @@ This approach ensures the simplest possible solution that correctly meets the cu
 - **Phase 2 (done):** Add Claude provider + automatic failover between GPT and Claude
 - **Future:** Memory layer + intelligent failover + dashboard
 
+## Railway Deployment
+
+### Required Environment Variables (set in Railway Dashboard)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes | OpenAI API key for GPT provider |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key for Gemini provider |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude provider (currently parked but slot reserved) |
+| `PORT` | No | Railway sets this automatically; server.js reads `process.env.PORT` |
+
+### Persistent Volume
+
+The `railway.json` configures a volume named `sessions` mounted at `/app/data/sessions`. This maps to `memory/store.js` which writes session JSON files to `data/sessions/` (resolves to `/app/data/sessions` in container). Session history survives redeploys/restarts.
+
+### Manual Deployment Steps
+
+1. **Create Railway Project**: Go to Railway dashboard → New Project → Deploy from GitHub repo
+2. **Connect Repository**: Select this GitHub repo, Railway auto-detects Node.js from package.json
+3. **Add Environment Variables**: In service settings → Variables, add the three API keys above
+4. **Attach Persistent Volume**: 
+   - In service settings → Volumes → Add Volume
+   - Name: `sessions`
+   - Mount Path: `/app/data/sessions`
+   - (Or let railway.json handle it — volume config is in code)
+5. **Deploy**: Trigger deploy; Railway runs `node server.js` per railway.json
+
+### Verification (after deploy)
+
+1. **Health check**: `GET https://<your-app>.up.railway.app/health` → `{ "status": "ok" }`
+2. **Context restoration**: 
+   - `POST /chat` with `session_id: "test-123"` and a message
+   - `POST /chat` with same `session_id` and follow-up → confirm context retained
+3. **Volume persistence**: 
+   - Trigger redeploy/restart in Railway
+   - `POST /chat` with same `session_id` → confirm prior history still present
+
 ## License
 
 ISC

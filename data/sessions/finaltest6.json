@@ -1,0 +1,82 @@
+{
+  "head_id": "4b2ccc1a-b189-4f10-a7d3-15d292d63532",
+  "nodes": {
+    "e90f4b79-6e89-45a1-a93b-593734558941": {
+      "node_id": "e90f4b79-6e89-45a1-a93b-593734558941",
+      "prev_id": null,
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 1",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.884Z"
+    },
+    "e3f694ac-738c-4fc5-9395-96e5b4e07685": {
+      "node_id": "e3f694ac-738c-4fc5-9395-96e5b4e07685",
+      "prev_id": "e90f4b79-6e89-45a1-a93b-593734558941",
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 2",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.887Z"
+    },
+    "e26a3a79-027e-4c0c-be06-2c38bc436109": {
+      "node_id": "e26a3a79-027e-4c0c-be06-2c38bc436109",
+      "prev_id": "e3f694ac-738c-4fc5-9395-96e5b4e07685",
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 3",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.887Z"
+    },
+    "bbb78115-5b3d-4168-ab60-d8fc0632e76b": {
+      "node_id": "bbb78115-5b3d-4168-ab60-d8fc0632e76b",
+      "prev_id": "e26a3a79-027e-4c0c-be06-2c38bc436109",
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 4",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.888Z"
+    },
+    "e87cead2-9ff1-45a1-81c3-3d04e5d2ccd9": {
+      "node_id": "e87cead2-9ff1-45a1-81c3-3d04e5d2ccd9",
+      "prev_id": "bbb78115-5b3d-4168-ab60-d8fc0632e76b",
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 5",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.888Z"
+    },
+    "cfeee854-5cdd-44b7-8873-955f4c9d1959": {
+      "node_id": "cfeee854-5cdd-44b7-8873-955f4c9d1959",
+      "prev_id": "e87cead2-9ff1-45a1-81c3-3d04e5d2ccd9",
+      "session_id": "finaltest6",
+      "type": "checkpoint",
+      "content": "Turn 1 Turn 2 Turn 3 Turn 4 Turn 5",
+      "model_used": "",
+      "status_at_this_point": "in_progress",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.889Z"
+    },
+    "4b2ccc1a-b189-4f10-a7d3-15d292d63532": {
+      "node_id": "4b2ccc1a-b189-4f10-a7d3-15d292d63532",
+      "prev_id": "cfeee854-5cdd-44b7-8873-955f4c9d1959",
+      "session_id": "finaltest6",
+      "type": "turn",
+      "content": "Turn 6",
+      "model_used": "",
+      "status_at_this_point": "done",
+      "references": null,
+      "timestamp": "2026-09-24T18:01:59.889Z"
+    }
+  }
+}
