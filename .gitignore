@@ -21,6 +21,9 @@ coverage/
 dist/
 build/
 
+# Session data
+data/sessions/
+
 # OS and editor files
 .DS_Store
 Thumbs.db

@@ -1,24 +1,41 @@
 require("dotenv").config();
 
 const express = require("express");
-const { handleChatRequest } = require("./routes/chat");
+const { createChatHandler } = require("./routes/chat");
+const { buildProviders } = require("./providers");
 
-const app = express();
-const port = process.env.PORT || 3000;
+function createApp(options = {}) {
+  const providers = options.providers || buildProviders();
 
-app.use(express.json());
+  const app = express();
 
-app.post("/chat", handleChatRequest);
+  app.use(express.json());
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok" });
-});
+  app.post("/chat", createChatHandler(providers));
 
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ error: "Internal server error" });
-});
+  app.get("/health", (req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
 
-app.listen(port, () => {
-  console.log(`ContinumAI gateway running on port ${port}`);
-});
+  app.use((err, req, res, next) => {
+    if (err.type === "entity.parse.failed") {
+      return res.status(400).json({
+        error: { type: "validation", message: "Invalid JSON body" },
+      });
+    }
+    console.error("Unhandled error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  });
+
+  return app;
+}
+
+if (require.main === module) {
+  const app = createApp();
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`ContinumAI gateway running on port ${port}`);
+  });
+}
+
+module.exports = { createApp };

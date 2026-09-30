@@ -2,17 +2,20 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 
-const SESSIONS_DIR = path.join(__dirname, '..', 'data', 'sessions');
+function getSessionsDir() {
+  return process.env.SESSIONS_DIR || path.join(__dirname, '..', 'data', 'sessions');
+}
 
 function ensureSessionDir() {
-  if (!fs.existsSync(SESSIONS_DIR)) {
-    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+  const dir = getSessionsDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
 function readSessionFile(sessionId) {
   ensureSessionDir();
-  const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+  const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -22,7 +25,7 @@ function readSessionFile(sessionId) {
 
 function writeSessionFile(sessionId, data) {
   ensureSessionDir();
-  const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+  const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
@@ -34,7 +37,7 @@ module.exports = {
   appendNode(sessionId, nodeFields) {
     ensureSessionDir();
 
-    const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+    const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
 
     let sessionData = null;
     if (fs.existsSync(filePath)) {
@@ -82,7 +85,7 @@ module.exports = {
         type: 'checkpoint',
         content: concatenatedContent,
         model_used: '',
-        status_at_this_point: 'in_progress',
+        status_at_this_point: fiveTurns[0].status_at_this_point,
         references: null,
         timestamp: new Date().toISOString(),
       };
@@ -122,7 +125,7 @@ module.exports = {
 
   getHead(sessionId) {
     ensureSessionDir();
-    const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+    const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -132,7 +135,7 @@ module.exports = {
 
   getContextForHandoff(sessionId) {
     ensureSessionDir();
-    const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+    const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
     if (!fs.existsSync(filePath)) {
       return [];
     }
@@ -173,7 +176,7 @@ module.exports = {
 
   getAllNodes(sessionId) {
     ensureSessionDir();
-    const filePath = path.join(SESSIONS_DIR, `${sessionId}.json`);
+    const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
     if (!fs.existsSync(filePath)) {
       return [];
     }
