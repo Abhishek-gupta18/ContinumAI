@@ -1,30 +1,34 @@
 const { GoogleGenAI } = require("@google/genai");
 const { classifyError } = require("./errorClassifier");
 
+// Lazy client (D7/P7): construct on first call and cache, so requiring this
+// module never throws and buildProviders() skipping stays meaningful.
 let genAI = null;
 
-try {
-  genAI = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-  });
-} catch (e) {
-  genAI = null;
+function getClient() {
+  if (!genAI) {
+    genAI = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+  }
+  return genAI;
+}
+
+// Verified against a real @google/genai ApiError: the HTTP status lives in
+// error.status (Object.keys = ["name","status"]; error.code and
+// error.statusCode are undefined). Read status first, keep the old shapes as fallbacks.
+function classifyGeminiError(error) {
+  const statusCode = error.status || error.code || error.statusCode || 500;
+  return classifyError(statusCode, error);
 }
 
 async function sendToGemini(normalizedRequest) {
   const { session_id, message } = normalizedRequest;
 
-  if (!genAI) {
-    return {
-      success: false,
-      error: classifyError(500, new Error("Gemini SDK initialization failed")),
-    };
-  }
-
   console.log(`[gemini] Sending request for session ${session_id}`);
 
   try {
-    const result = await genAI.models.generateContent({
+    const result = await getClient().models.generateContent({
       model: "gemini-3.6-flash",
       contents: message,
     });
@@ -39,10 +43,8 @@ async function sendToGemini(normalizedRequest) {
 
     return { success: true, data: normalizedResponse };
   } catch (error) {
-    const statusCode = error.code || error.statusCode || 500;
-    const structuredError = classifyError(statusCode, error);
-    return { success: false, error: structuredError };
+    return { success: false, error: classifyGeminiError(error) };
   }
 }
 
-module.exports = { sendToGemini };
+module.exports = { sendToGemini, classifyGeminiError };

@@ -33,6 +33,63 @@ function generateNodeId() {
   return randomUUID();
 }
 
+// Module-level so both the export and buildContextText can call it (method
+// shorthand inside an object literal creates no scope binding).
+function getContextNodes(sessionId) {
+  ensureSessionDir();
+  const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+
+  const data = readSessionFile(sessionId);
+  if (!data || !data.nodes) {
+    return [];
+  }
+
+  const headId = data.head_id;
+  if (!headId) {
+    return [];
+  }
+
+  const chain = [];
+  let currentId = headId;
+
+  while (currentId) {
+    const node = data.nodes[currentId];
+    if (!node) break;
+    chain.push(node);
+    currentId = node.prev_id;
+  }
+
+  chain.reverse();
+
+  const checkpointIndex = chain.findIndex(node => node.type === 'checkpoint');
+
+  let result;
+  if (checkpointIndex >= 0) {
+    result = chain.slice(checkpointIndex);
+  } else {
+    result = chain;
+  }
+
+  return result;
+}
+
+// Single place for transcript formatting (D3/D4).
+// checkpoint node → its content as is; turn node with status 'done' and a
+// non-null reply → "User: <content>\nAssistant: <reply>"; anything else → null (skipped).
+function formatNodeText(node) {
+  if (!node) return null;
+  if (node.type === 'checkpoint') {
+    return node.content;
+  }
+  if (node.type === 'turn' && node.status_at_this_point === 'done' && node.reply != null) {
+    return `User: ${node.content}\nAssistant: ${node.reply}`;
+  }
+  return null;
+}
+
 module.exports = {
   appendNode(sessionId, nodeFields) {
     ensureSessionDir();
@@ -74,18 +131,22 @@ module.exports = {
     }
 
     if (turnCountSinceCheckpoint >= 5) {
-      const fiveTurns = turnsSinceCheckpoint.slice(0, 5);
-      const concatenatedContent = fiveTurns.reverse().map((n) => n.content).join(' ');
-      const fifthTurnNodeId = fiveTurns[fiveTurns.length - 1].node_id;
+      // turnsSinceCheckpoint is newest-first; make it oldest-first (P5/D4).
+      const oldestFirst = turnsSinceCheckpoint.slice(0, 5).reverse();
+      const newestTurn = oldestFirst[oldestFirst.length - 1];
+      const concatenatedContent = oldestFirst
+        .map((n) => formatNodeText(n))
+        .filter((text) => text !== null)
+        .join('\n');
 
       const checkpointNode = {
         node_id: generateNodeId(),
-        prev_id: fifthTurnNodeId,
+        prev_id: newestTurn.node_id,
         session_id: sessionId,
         type: 'checkpoint',
         content: concatenatedContent,
         model_used: '',
-        status_at_this_point: fiveTurns[0].status_at_this_point,
+        status_at_this_point: newestTurn.status_at_this_point,
         references: null,
         timestamp: new Date().toISOString(),
       };
@@ -105,6 +166,7 @@ module.exports = {
       session_id: sessionId,
       type: nodeFields.type || 'turn',
       content: nodeFields.content || '',
+      reply: nodeFields.reply !== undefined ? nodeFields.reply : null,
       model_used: nodeFields.model_used || '',
       status_at_this_point: nodeFields.status_at_this_point || 'in_progress',
       references: nodeFields.references !== undefined ? nodeFields.references : null,
@@ -134,44 +196,16 @@ module.exports = {
   },
 
   getContextForHandoff(sessionId) {
-    ensureSessionDir();
-    const filePath = path.join(getSessionsDir(), `${sessionId}.json`);
-    if (!fs.existsSync(filePath)) {
-      return [];
-    }
+    return getContextNodes(sessionId);
+  },
 
-    const data = readSessionFile(sessionId);
-    if (!data || !data.nodes) {
-      return [];
-    }
-
-    const headId = data.head_id;
-    if (!headId) {
-      return [];
-    }
-
-    const chain = [];
-    let currentId = headId;
-
-    while (currentId) {
-      const node = data.nodes[currentId];
-      if (!node) break;
-      chain.push(node);
-      currentId = node.prev_id;
-    }
-
-    chain.reverse();
-
-    const checkpointIndex = chain.findIndex(node => node.type === 'checkpoint');
-
-    let result;
-    if (checkpointIndex >= 0) {
-      result = chain.slice(checkpointIndex);
-    } else {
-      result = chain;
-    }
-
-    return result;
+  // D3: transcript text built from the handoff chain. '' for a new session.
+  buildContextText(sessionId) {
+    const nodes = getContextNodes(sessionId);
+    return nodes
+      .map((node) => formatNodeText(node))
+      .filter((text) => text !== null)
+      .join('\n');
   },
 
   getAllNodes(sessionId) {

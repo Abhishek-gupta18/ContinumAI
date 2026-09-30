@@ -1,9 +1,21 @@
 require("dotenv").config();
 
-const openai = new (require("openai"))({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 const { classifyError } = require("./errorClassifier");
+
+// Lazy client (D7/P7): constructing the SDK at module load throws when the key
+// is missing, which crashed the app even when buildProviders() had skipped this
+// provider. Construct on first call instead, and cache it.
+let openaiClient = null;
+
+function getClient() {
+  if (!openaiClient) {
+    const OpenAI = require("openai");
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
 
 async function sendToOpenAI(normalizedRequest) {
   const { session_id, message } = normalizedRequest;
@@ -11,7 +23,7 @@ async function sendToOpenAI(normalizedRequest) {
   console.log(`[openai] Sending request for session ${session_id}`);
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
