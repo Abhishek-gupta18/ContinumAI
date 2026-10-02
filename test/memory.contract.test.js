@@ -1,5 +1,4 @@
-'use strict';
-
+require('dotenv').config();
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -259,6 +258,48 @@ test('fileStore contract', (t) => {
   });
 });
 
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+if (testDatabaseUrl) {
+  const { Pool } = require('pg');
+  const { createPgStore } = require('../memory/pgStore');
+  const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql');
+  const baseSql = fs.readFileSync(schemaPath, 'utf8');
+
+  test('pgStore contract', (t) => {
+    const testSchema = `cmt_test_${require('crypto').randomBytes(4).toString('hex')}`;
+    const sql = baseSql.replace(/continumai/g, testSchema);
+    assert.ok(!sql.includes('continumai'), 'replaced SQL must not contain original schema name');
+
+    let pool;
+    let store;
+
+    t.before(async () => {
+      pool = new Pool({
+        connectionString: testDatabaseUrl,
+        max: 5,
+        connectionTimeoutMillis: 5000,
+        idleTimeoutMillis: 30000,
+        statement_timeout: 10000,
+      });
+      await pool.query(sql);
+      store = createPgStore({ pool, schema: testSchema });
+    });
+
+    t.after(async () => {
+      if (pool) {
+        try {
+          await pool.query(`drop schema if exists ${testSchema} cascade`);
+        } catch (_) {}
+        await pool.end();
+      }
+    });
+
+    runMemoryContract('pgStore', () => store);
+  });
+} else {
+  test('pgStore contract [SKIPPED]', { skip: 'TEST_DATABASE_URL not set' }, () => {});
+}
+
 test('formatNodeText utility', () => {
   assert.strictEqual(formatNodeText(null), null);
   assert.strictEqual(formatNodeText({ type: 'checkpoint', content: 'cp text' }), 'cp text');
@@ -266,4 +307,104 @@ test('formatNodeText utility', () => {
   assert.strictEqual(formatNodeText({ type: 'turn', status_at_this_point: 'done', content: 'hi', reply: null }), null);
   assert.strictEqual(formatNodeText({ type: 'turn', status_at_this_point: 'in_progress', content: 'hi', reply: 'hello' }), null);
   assert.strictEqual(formatNodeText({ type: 'turn', status_at_this_point: 'blocked', content: 'hi', reply: 'hello' }), null);
+});
+
+test('pgStore unit: invalid schema name rejected at construction', () => {
+  const { createPgStore } = require('../memory/pgStore');
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: 'postgresql://localhost:5432/test' });
+  assert.throws(() => createPgStore({ pool, schema: 'x; drop table y' }), /invalid schema name/);
+  pool.end();
+});
+
+test('import check: server.js and memory/store.js do not connect to database', () => {
+  const { Pool } = require('pg');
+  const originalPool = Pool;
+  let poolConstructed = false;
+  global.Pool = function (...args) {
+    poolConstructed = true;
+    return new originalPool(...args);
+  };
+  try {
+    require('../server');
+    require('../memory/store');
+    assert.strictEqual(poolConstructed, false, 'importing server.js or memory/store.js must not construct pg Pool');
+  } finally {
+    global.Pool = originalPool;
+  }
+});
+
+// T2: Failure policy tests
+function makeFakeProvider() {
+  return {
+    name: 'fake',
+    send: async function() {
+      return { success: true, data: { reply: 'ok', model_used: 'm' }};
+    }
+  };
+}
+
+test('failure policy: buildContextText rejects -> 503 memory_unavailable, provider not called', async () => {
+  const { createApp } = require('../server');
+  let providerCalled = false;
+  const failingMemory = {
+    buildContextText: async function() { throw new Error('db down'); },
+    appendNode: async function() {},
+  };
+  const providers = [{
+    name: 'fake',
+    send: async function() {
+      providerCalled = true;
+      return { success: true, data: { reply: 'ok', model_used: 'm' }};
+    }
+  }];
+  const app = createApp({ providers, apiToken: null, memory: failingMemory });
+  const s = await new Promise(function(r) {
+    const svr = app.listen(0, '127.0.0.1', function() { r(svr); });
+  });
+  const port = s.address().port;
+  const res = await fetch('http://127.0.0.1:' + port + '/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-fail', message: 'hello' })
+  });
+  const body = await res.json();
+  assert.strictEqual(res.status, 503);
+  assert.strictEqual(body.error.type, 'memory_unavailable');
+  assert.strictEqual(providerCalled, false, 'provider must not be called');
+  s.close();
+});
+
+test('failure policy: appendNode rejects after success -> 200, reply present, X-Memory-Saved: false', async () => {
+  const { createApp } = require('../server');
+  let appendFails = false;
+  const failingMemory = {
+    buildContextText: async function() { return ''; },
+    appendNode: async function() { if (appendFails) throw new Error('write failed'); },
+  };
+  const providers = [makeFakeProvider()];
+  const app = createApp({ providers, apiToken: null, memory: failingMemory });
+  const s = await new Promise(function(r) {
+    const svr = app.listen(0, '127.0.0.1', function() { r(svr); });
+  });
+  const port = s.address().port;
+  
+  const res1 = await fetch('http://127.0.0.1:' + port + '/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-append-fail', message: 'hello' })
+  });
+  assert.strictEqual(res1.status, 200);
+  const body1 = await res1.json();
+  assert.strictEqual(body1.reply, 'ok');
+  
+  appendFails = true;
+  const res2 = await fetch('http://127.0.0.1:' + port + '/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-append-fail', message: 'hello again' })
+  });
+  assert.strictEqual(res2.status, 200);
+  const body2 = await res2.json();
+  assert.strictEqual(body2.reply, 'ok');
+  assert.strictEqual(res2.headers.get('x-memory-saved'), 'false');
+  
+  s.close();
 });

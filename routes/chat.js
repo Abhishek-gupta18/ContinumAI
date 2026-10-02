@@ -33,7 +33,6 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
       });
     }
 
-    // D6: no providers configured → clear 503, memory untouched.
     if (!providers || providers.length === 0) {
       return res.status(503).json({
         error: {
@@ -43,8 +42,19 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
       });
     }
 
-    // D5: role-formatted transcript prompt; original message stored as content.
-    const contextText = await memory.buildContextText(session_id);
+    let contextText;
+    try {
+      contextText = await memory.buildContextText(session_id);
+    } catch (err) {
+      console.error('[memory] buildContextText failed:', err.message, err.code ?? '');
+      return res.status(503).json({
+        error: {
+          type: 'memory_unavailable',
+          message: 'Conversation memory is unavailable',
+        },
+      });
+    }
+
     const prompt =
       contextText !== ""
         ? `Conversation so far (earlier turns may have been answered by different assistants):\n${contextText}\n\nUser: ${message}`
@@ -55,7 +65,6 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
     let lastError = null;
     let lastProvider = null;
 
-    // Try providers in order with failover (any error → try next)
     for (const provider of providers) {
       const result = await provider.send(currentRequest);
 
@@ -64,14 +73,18 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
           `[gateway] Request ${currentRequest.session_id} served by ${provider.name} succeeded`
         );
 
-        // D1: one node per exchange — content = user's message, reply = provider's reply.
-        await memory.appendNode(session_id, {
-          type: "turn",
-          content: message,
-          reply: result.data.reply,
-          model_used: result.data.model_used,
-          status_at_this_point: "done",
-        });
+        try {
+          await memory.appendNode(session_id, {
+            type: "turn",
+            content: message,
+            reply: result.data.reply,
+            model_used: result.data.model_used,
+            status_at_this_point: "done",
+          });
+        } catch (err) {
+          console.error('[memory] appendNode failed after success:', err.message, err.code ?? '');
+          res.setHeader('X-Memory-Saved', 'false');
+        }
         return res.status(200).json(result.data);
       }
 
@@ -89,17 +102,21 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
       }
     }
 
-    // D2: all providers failed — still record the exchange, but never the error text.
     console.error(
       `[gateway] Request ${session_id} failed on all providers. Last error from ${lastProvider}: ${lastError && lastError.message}`
     );
-    await memory.appendNode(session_id, {
-      type: "turn",
-      content: message,
-      reply: null,
-      model_used: "unknown",
-      status_at_this_point: "blocked",
-    });
+    try {
+      await memory.appendNode(session_id, {
+        type: "turn",
+        content: message,
+        reply: null,
+        model_used: "unknown",
+        status_at_this_point: "blocked",
+      });
+    } catch (err) {
+      console.error('[memory] appendNode failed after all providers failed:', err.message, err.code ?? '');
+      res.setHeader('X-Memory-Saved', 'false');
+    }
 
     const statusCode = (lastError && lastError.statusCode) || 500;
     return res.status(statusCode).json({

@@ -68,7 +68,21 @@ if (require.main === module) {
     console.error('GATEWAY_API_TOKEN is not set. Set GATEWAY_API_TOKEN or ALLOW_UNAUTHENTICATED=true (dev only) to start.');
     process.exit(1);
   }
-  const app = createApp();
+
+  let memory;
+  if (typeof process.env.DATABASE_URL === 'string' && process.env.DATABASE_URL.length > 0) {
+    const { createPool } = require('./memory/pgPool');
+    const { createPgStore } = require('./memory/pgStore');
+    const { createMemory } = require('./memory/memory');
+    const pool = createPool(process.env);
+    memory = createMemory(createPgStore({ pool }));
+    console.log('memory backend: postgres');
+  } else {
+    memory = require('./memory/store');
+    console.log('memory backend: file');
+  }
+
+  const app = createApp({ memory });
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
     console.log(`ContinumAI gateway running on port ${port}`);

@@ -77,8 +77,7 @@ function createMemory(store) {
         nodesToAppend.push(checkpointNode);
         prevId = checkpointNode.node_id;
       } else {
-        const headId = await store.getHead(sessionId);
-        prevId = headId;
+        prevId = tail.length > 0 ? tail[tail.length - 1].node_id : null;
       }
 
       const node = {
