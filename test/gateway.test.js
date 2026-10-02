@@ -12,7 +12,7 @@ const { buildProviders } = require('../providers');
 const { sendToOpenAI } = require('../providers/openai');
 const { sendToGemini, classifyGeminiError } = require('../providers/gemini');
 const store = require('../memory/store');
-const { getContextForHandoff, buildContextText } = store;
+const { getContextForHandoff, buildContextText, sessionFilePath } = store;
 
 function makeError(type, message, statusCode) {
   return { success: false, error: { type, message, statusCode } };
@@ -61,8 +61,8 @@ function promptCapturingProvider(name, handler) {
   };
 }
 
-function startServer(t, providers) {
-  const app = createApp({ providers });
+function startServer(t, providers, apiToken) {
+  const app = createApp({ providers, apiToken: apiToken === undefined ? null : apiToken });
   return new Promise((resolve) => {
     const server = app.listen(0, '127.0.0.1', () => resolve(server));
     t.after(() => {
@@ -348,7 +348,7 @@ test('checkpoint through HTTP: 6 turns → exactly one checkpoint chained betwee
     'checkpoint must copy status_at_this_point from the last turn of its chunk'
   );
 
-  const handoff = getContextForHandoff('t-checkpoint-chain');
+  const handoff = await getContextForHandoff('t-checkpoint-chain');
   assert.strictEqual(handoff.length, 2);
   assert.strictEqual(handoff[0].type, 'checkpoint');
   assert.strictEqual(handoff[0].node_id, chain[5].node_id);
@@ -478,7 +478,7 @@ test('checkpoint status: chunk first turn blocked, newest done → checkpoint st
 test('buildContextText: checkpoint content included as-is; empty session returns empty string', async (t) => {
   useTempSessionsDir(t);
 
-  assert.strictEqual(buildContextText('t-nothing'), '');
+  assert.strictEqual(await buildContextText('t-nothing'), '');
 
   await store.appendNode('t-nothing', {
     type: 'turn',
@@ -488,7 +488,7 @@ test('buildContextText: checkpoint content included as-is; empty session returns
     status_at_this_point: 'done',
   });
 
-  assert.strictEqual(buildContextText('t-nothing'), 'User: hi there\nAssistant: hello!');
+  assert.strictEqual(await buildContextText('t-nothing'), 'User: hi there\nAssistant: hello!');
 });
 
 test('buildContextText: old-format node without reply and non-done statuses are skipped', async (t) => {
@@ -509,7 +509,7 @@ test('buildContextText: old-format node without reply and non-done statuses are 
     status_at_this_point: 'done',
   });
 
-  const text = buildContextText('t-legacy');
+  const text = await buildContextText('t-legacy');
   assert.ok(!text.includes('old turn without reply'), `reply-less turn must be skipped: ${JSON.stringify(text)}`);
   assert.ok(text.includes('User: done turn with reply\nAssistant: the reply'), `got: ${JSON.stringify(text)}`);
 });
@@ -564,6 +564,248 @@ test('startup without keys: child process with no env keys can require providers
     const resultLine = stdout.split('\n').find((line) => line.startsWith('RESULT:'));
     assert.ok(resultLine, `expected a RESULT: line in child stdout, got: ${JSON.stringify(stdout)}`);
     assert.strictEqual(resultLine.slice('RESULT:'.length), '[]');
+  } finally {
+    fs.rmSync(emptyDir, { recursive: true, force: true });
+  }
+});
+
+// U1: Invalid session_id variants → 400, provider never called, no file created
+test('invalid session_id variants rejected with 400, provider not called, no traversal', async (t) => {
+  const sessionsDir = useTempSessionsDir(t);
+
+  const calls = [];
+  const providers = [{
+    name: 'fake',
+    send: async () => {
+      calls.push('called');
+      return makeSuccess('ok', 'fake-model');
+    },
+  }];
+
+  const server = await startServer(t, providers);
+
+  const invalidIds = [
+    '../x',
+    'a/b',
+    '',
+    'a'.repeat(65),
+    '.',
+    123,
+    null,
+  ];
+
+  for (const id of invalidIds) {
+    calls.length = 0;
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: id, message: 'hello' }),
+    });
+    assert.strictEqual(res.status, 400, `expected 400 for ${JSON.stringify(id)}`);
+    const body = await res.json();
+    assert.strictEqual(body.error.type, 'validation');
+    assert.strictEqual(calls.length, 0, `provider must not be called for ${JSON.stringify(id)}`);
+  }
+
+  // No session files created in temp dir
+  assert.strictEqual(fs.readdirSync(sessionsDir).length, 0);
+
+  // No file created at traversal target outside sessions dir
+  const outside = path.join(os.tmpdir(), 'continumai-test-escape.json');
+  assert.ok(!fs.existsSync(outside), 'no file must be created outside sessions dir');
+});
+
+// U2: Store level: appendNode('../escape', ...) and getContextForHandoff('../escape') fail safely
+test('store: appendNode and getContextForHandoff reject path traversal', async (t) => {
+  useTempSessionsDir(t);
+
+  await assert.rejects(
+    store.appendNode('../escape', { type: 'turn', content: 'x', reply: 'y', model_used: 'm', status_at_this_point: 'done' }),
+    /Path traversal attempt/
+  );
+
+  await assert.rejects(
+    store.getContextForHandoff('../escape'),
+    /Path traversal attempt/
+  );
+
+  // Ensure no file created outside sessions dir
+  const outside = path.join(os.tmpdir(), 'continumai-test-escape.json');
+  assert.ok(!fs.existsSync(outside), 'no file must be created outside sessions dir');
+});
+
+// U3: Auth with apiToken set
+test('auth: with apiToken set, missing header → 401', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, 'secret-token');
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-auth', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 401);
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'unauthorized');
+});
+
+test('auth: with apiToken set, wrong token → 401', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, 'secret-token');
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer wrong' },
+    body: JSON.stringify({ session_id: 't-auth', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 401);
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'unauthorized');
+});
+
+test('auth: with apiToken set, wrong-length token → 401 (no crash)', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, 'secret-token');
+
+  // Different length token
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer verylongtokenthatdiffersinlength' },
+    body: JSON.stringify({ session_id: 't-auth', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 401);
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'unauthorized');
+});
+
+test('auth: with apiToken set, correct token → 200', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, 'secret-token');
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer secret-token' },
+    body: JSON.stringify({ session_id: 't-auth', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'ok');
+});
+
+test('auth: GET /health without token → 200', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [];
+  const server = await startServer(t, providers, 'secret-token');
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/health`);
+
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.status, 'ok');
+});
+
+// V1: With process.env.GATEWAY_API_TOKEN set, createApp({ providers, apiToken: null }) accepts POST /chat without header (200)
+test('V1: env token set but apiToken null → /chat open (200)', async (t) => {
+  useTempSessionsDir(t);
+  const previousToken = process.env.GATEWAY_API_TOKEN;
+  process.env.GATEWAY_API_TOKEN = 'env-token';
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.GATEWAY_API_TOKEN;
+    else process.env.GATEWAY_API_TOKEN = previousToken;
+  });
+
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, null);
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-v1', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'ok');
+});
+
+// V2: With process.env.GATEWAY_API_TOKEN set, createApp({ providers }) (apiToken undefined) rejects POST /chat without header (401)
+test('V2: env token set and apiToken undefined → /chat requires auth (401)', async (t) => {
+  useTempSessionsDir(t);
+  const previousToken = process.env.GATEWAY_API_TOKEN;
+  process.env.GATEWAY_API_TOKEN = 'env-token';
+  t.after(() => {
+    if (previousToken === undefined) delete process.env.GATEWAY_API_TOKEN;
+    else process.env.GATEWAY_API_TOKEN = previousToken;
+  });
+
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  // Call createApp directly with undefined to test fallback to env
+  const app = createApp({ providers, apiToken: undefined });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 't-v2', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 401);
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'unauthorized');
+});
+
+// V3: With a token configured, POST /chat with malformed JSON body and no Authorization header returns 401, not 400
+test('V3: token configured, malformed JSON + no auth → 401 (not 400)', async (t) => {
+  useTempSessionsDir(t);
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const server = await startServer(t, providers, 'secret-token');
+
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{not valid json',
+  });
+
+  assert.strictEqual(res.status, 401, 'must be 401 because auth runs before body parse');
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'unauthorized');
+});
+
+// U4: Startup guard
+test('startup guard: child process with no token and no ALLOW_UNAUTHENTICATED exits non-zero, no listening message', () => {
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'continumai-startup-'));
+  const projectRoot = path.join(__dirname, '..');
+  try {
+    const result = require('node:child_process').spawnSync(
+      process.execPath,
+      [path.join(projectRoot, 'server.js')],
+      {
+        cwd: emptyDir,
+        env: {
+          PATH: process.env.PATH,
+          SystemRoot: process.env.SystemRoot,
+          // No GATEWAY_API_TOKEN, no ALLOW_UNAUTHENTICATED
+        },
+        encoding: 'utf8',
+        timeout: 5000,
+      }
+    );
+    assert.notStrictEqual(result.status, 0, 'process must exit with non-zero code');
+    const output = result.stdout + result.stderr;
+    assert.ok(!output.includes('running on port'), 'must not print listening message');
+    assert.ok(output.includes('GATEWAY_API_TOKEN is not set'), 'must print clear error');
   } finally {
     fs.rmSync(emptyDir, { recursive: true, force: true });
   }

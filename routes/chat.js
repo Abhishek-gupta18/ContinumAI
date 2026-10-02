@@ -1,7 +1,7 @@
 const { buildProviders } = require("../providers");
-const { appendNode, buildContextText } = require("../memory/store");
+const defaultMemory = require("../memory/store");
 
-function createChatHandler(providers = buildProviders()) {
+function createChatHandler(providers = buildProviders(), memory = defaultMemory) {
   return async function handleChatRequest(req, res) {
     const normalizedRequest = req.body;
 
@@ -17,6 +17,22 @@ function createChatHandler(providers = buildProviders()) {
 
     const { session_id, message } = normalizedRequest;
 
+    if (typeof session_id !== 'string') {
+      return res.status(400).json({
+        error: { type: 'validation', message: 'Invalid session_id' },
+      });
+    }
+    if (typeof message !== 'string') {
+      return res.status(400).json({
+        error: { type: 'validation', message: 'message must be a string' },
+      });
+    }
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(session_id)) {
+      return res.status(400).json({
+        error: { type: 'validation', message: 'Invalid session_id' },
+      });
+    }
+
     // D6: no providers configured → clear 503, memory untouched.
     if (!providers || providers.length === 0) {
       return res.status(503).json({
@@ -28,7 +44,7 @@ function createChatHandler(providers = buildProviders()) {
     }
 
     // D5: role-formatted transcript prompt; original message stored as content.
-    const contextText = buildContextText(session_id);
+    const contextText = await memory.buildContextText(session_id);
     const prompt =
       contextText !== ""
         ? `Conversation so far (earlier turns may have been answered by different assistants):\n${contextText}\n\nUser: ${message}`
@@ -49,7 +65,7 @@ function createChatHandler(providers = buildProviders()) {
         );
 
         // D1: one node per exchange — content = user's message, reply = provider's reply.
-        await appendNode(session_id, {
+        await memory.appendNode(session_id, {
           type: "turn",
           content: message,
           reply: result.data.reply,
@@ -77,7 +93,7 @@ function createChatHandler(providers = buildProviders()) {
     console.error(
       `[gateway] Request ${session_id} failed on all providers. Last error from ${lastProvider}: ${lastError && lastError.message}`
     );
-    await appendNode(session_id, {
+    await memory.appendNode(session_id, {
       type: "turn",
       content: message,
       reply: null,

@@ -4,6 +4,7 @@ node_modules/
 # Environment and local configuration
 .env
 .env.*
+!.env.example
 opencode.json
 
 # Local tooling
