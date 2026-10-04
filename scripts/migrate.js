@@ -1,7 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Pool } = require('pg');
+const { createPool } = require('../memory/pgPool');
 
 async function migrate() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -13,11 +13,7 @@ async function migrate() {
   const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
 
-  const pool = new Pool({
-    connectionString: databaseUrl,
-    max: 1,
-    connectionTimeoutMillis: 5000,
-  });
+  const pool = createPool(process.env);
 
   try {
     await pool.query(sql);

@@ -260,7 +260,7 @@ test('fileStore contract', (t) => {
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (testDatabaseUrl) {
-  const { Pool } = require('pg');
+  const { createPool } = require('../memory/pgPool');
   const { createPgStore } = require('../memory/pgStore');
   const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql');
   const baseSql = fs.readFileSync(schemaPath, 'utf8');
@@ -274,13 +274,7 @@ if (testDatabaseUrl) {
     let store;
 
     t.before(async () => {
-      pool = new Pool({
-        connectionString: testDatabaseUrl,
-        max: 5,
-        connectionTimeoutMillis: 5000,
-        idleTimeoutMillis: 30000,
-        statement_timeout: 10000,
-      });
+      pool = createPool({ ...process.env, DATABASE_URL: testDatabaseUrl });
       await pool.query(sql);
       store = createPgStore({ pool, schema: testSchema });
     });
@@ -317,21 +311,22 @@ test('pgStore unit: invalid schema name rejected at construction', () => {
   pool.end();
 });
 
-test('import check: server.js and memory/store.js do not connect to database', () => {
-  const { Pool } = require('pg');
-  const originalPool = Pool;
-  let poolConstructed = false;
-  global.Pool = function (...args) {
-    poolConstructed = true;
-    return new originalPool(...args);
-  };
-  try {
-    require('../server');
-    require('../memory/store');
-    assert.strictEqual(poolConstructed, false, 'importing server.js or memory/store.js must not construct pg Pool');
-  } finally {
-    global.Pool = originalPool;
-  }
+test('import check: server.js and memory/store.js do not load pgPool/pgStore/pg', (t) => {
+  const { spawnSync } = require('child_process');
+  const { resolve } = require('path');
+  const root = resolve(__dirname, '..');
+  const env = { ...process.env, DATABASE_URL: 'postgresql://bogus:bogus@localhost:5432/bogus' };
+  const code = `
+    require('./server');
+    require('./memory/store');
+    const keys = Object.keys(require.cache).map(k => k.replace(/\\\\/g, '/'));
+    const found = keys.some(k => k.includes('memory/pgPool') || k.includes('memory/pgStore') || k.includes('/node_modules/pg/'));
+    console.log(found);
+  `;
+  const result = spawnSync(process.execPath, ['-e', code], { cwd: root, env, encoding: 'utf8' });
+  assert.strictEqual(result.status, 0, `child exited with ${result.status}: ${result.stderr}`);
+  const lastLine = result.stdout.trim().split('\n').pop().trim();
+  assert.strictEqual(lastLine, 'false', 'pgPool, pgStore, or pg must not be loaded on import');
 });
 
 // T2: Failure policy tests
