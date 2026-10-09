@@ -25,15 +25,9 @@ function createPgStore({ pool, schema = 'continumai' }) {
   const q = (sql, params) => pool.query(sql, params);
 
   async function getTail(sessionId) {
-    const checkpointSeq = await q(
-      `select coalesce(max(seq), 0) as max_seq from ${schema}.nodes where session_id = $1 and type = 'checkpoint'`,
-      [sessionId]
-    );
-    const minSeq = checkpointSeq.rows[0]?.max_seq ?? 0;
-
     const res = await q(
-      `select * from ${schema}.nodes where session_id = $1 and seq >= $2 order by seq`,
-      [sessionId, minSeq]
+      `select * from ${schema}.nodes where session_id = $1 and seq >= coalesce((select max(seq) from ${schema}.nodes where session_id = $1 and type = 'checkpoint'), 0) order by seq`,
+      [sessionId]
     );
     return res.rows.map(mapRow);
   }

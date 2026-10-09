@@ -19,10 +19,13 @@ function createPool(env = process.env) {
   const url = new URL(connectionString);
   url.searchParams.delete('sslmode');
 
+  const connectTimeout = Number(env.PG_CONNECT_TIMEOUT_MS);
+  const connectionTimeoutMillis = Number.isFinite(connectTimeout) && connectTimeout > 0 ? connectTimeout : 10000;
+
   return new Pool({
     connectionString: url.toString(),
     max: 5,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis,
     idleTimeoutMillis: 30000,
     statement_timeout: 10000,
     ssl: sslConfig,

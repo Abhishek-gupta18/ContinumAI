@@ -1,7 +1,7 @@
 {
   "name": "continumai",
   "version": "1.0.0",
-  "description": "",
+  "description": "A cloud-based AI gateway that connects multiple LLM providers behind a single unified API.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -22,5 +22,21 @@
     "express": "^5.2.1",
     "openai": "^7.15.0",
     "pg": "^8.11.3"
-  }
+  },
+  "directories": {
+    "test": "test"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Abhishek-gupta18/ContinumAI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Abhishek-gupta18/ContinumAI/issues"
+  },
+  "homepage": "https://github.com/Abhishek-gupta18/ContinumAI#readme"
 }
