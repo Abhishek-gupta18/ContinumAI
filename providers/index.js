@@ -1,14 +1,22 @@
 const { sendToOpenAI } = require("./openai");
 const { sendToGemini } = require("./gemini");
+const { sendToClaude } = require("./claude");
+const { sendToOpenAICompat } = require("./openaiCompat");
+
+function isSet(value) {
+  return (value || "").trim() !== "";
+}
 
 function buildProviders(env = process.env) {
   const registry = [
-    { name: "openai", keyEnv: "OPENAI_API_KEY", send: sendToOpenAI },
-    { name: "gemini", keyEnv: "GEMINI_API_KEY", send: sendToGemini },
+    { name: "openai", enabled: isSet(env.OPENAI_API_KEY), send: sendToOpenAI },
+    { name: "gemini", enabled: isSet(env.GEMINI_API_KEY), send: sendToGemini },
+    { name: "claude", enabled: isSet(env.ANTHROPIC_API_KEY), send: sendToClaude },
+    { name: "openai_compat", enabled: isSet(env.OPENAI_COMPAT_BASE_URL), send: sendToOpenAICompat },
   ];
 
   return registry
-    .filter((entry) => (env[entry.keyEnv] || "").trim() !== "")
+    .filter((entry) => entry.enabled)
     .map(({ name, send }) => ({ name, send }));
 }
 

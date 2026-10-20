@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const { classifyError } = require("./errorClassifier");
+const { getProviderTimeoutMs } = require("./timeout");
 
 // Lazy client (D7/P7): constructing the SDK at module load throws when the key
 // is missing, which crashed the app even when buildProviders() had skipped this
@@ -12,6 +13,8 @@ function getClient() {
     const OpenAI = require("openai");
     openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      maxRetries: 0,
+      timeout: getProviderTimeoutMs(),
     });
   }
   return openaiClient;

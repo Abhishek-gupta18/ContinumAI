@@ -11,8 +11,13 @@ create table if not exists continumai.nodes (
     model_used text not null default '',
     status_at_this_point text not null check (status_at_this_point in ('in_progress','blocked','done')),
     refs jsonb null,
+    provider text null,
+    failed_providers text[] not null default '{}',
     created_at timestamptz not null default now()
 );
+
+alter table continumai.nodes add column if not exists provider text null;
+alter table continumai.nodes add column if not exists failed_providers text[] not null default '{}';
 
 create index if not exists nodes_session_seq_idx on continumai.nodes (session_id, seq);
 create index if not exists nodes_session_checkpoint_idx on continumai.nodes (session_id, seq) where type = 'checkpoint';

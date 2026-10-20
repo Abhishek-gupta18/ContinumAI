@@ -1,5 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 const { classifyError } = require("./errorClassifier");
+const { getProviderTimeoutMs } = require("./timeout");
 
 // Lazy client (D7/P7): construct on first call and cache, so requiring this
 // module never throws and buildProviders() skipping stays meaningful.
@@ -31,6 +32,11 @@ async function sendToGemini(normalizedRequest) {
     const result = await getClient().models.generateContent({
       model: "gemini-3.6-flash",
       contents: message,
+      config: {
+        httpOptions: {
+          timeout: getProviderTimeoutMs(),
+        },
+      },
     });
     const normalizedResponse = {
       session_id,

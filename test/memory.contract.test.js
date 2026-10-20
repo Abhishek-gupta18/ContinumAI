@@ -249,6 +249,231 @@ function runMemoryContract(label, makeStore) {
     assert.ok(textB.includes('B1') && textB.includes('B2'));
     assert.ok(!textB.includes('A1') && !textB.includes('A2'));
   });
+
+  test(`${label}: C7 - multi-checkpoint: 16 exchanges, 3 checkpoints, latest-checkpoint tail`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c7-multi-checkpoint';
+
+    for (let i = 1; i <= 16; i++) {
+      const result = await memory.appendNode(sessionId, {
+        type: 'turn',
+        content: `question ${i}`,
+        reply: `answer ${i}`,
+        model_used: 'm',
+        status_at_this_point: 'done',
+      });
+
+      const text = await memory.buildContextText(sessionId);
+      const userOccurrences = (text.match(/User: /g) || []).length;
+      assert.ok(text.includes(`User: question ${i}\n`), `after append ${i}, context must contain the just-appended exchange`);
+      assert.ok(userOccurrences <= 10, `after append ${i}, at most 10 User: occurrences, got ${userOccurrences}`);
+    }
+
+    const allNodes = await memory.getAllNodes(sessionId);
+    const checkpoints = allNodes.filter((n) => n.type === 'checkpoint');
+    const turns = allNodes.filter((n) => n.type === 'turn');
+    assert.strictEqual(checkpoints.length, 3, 'exactly 3 checkpoint nodes after 16 turns');
+    assert.strictEqual(turns.length, 16, 'exactly 16 turn nodes after 16 turns');
+
+    const handoff = await memory.getContextForHandoff(sessionId);
+    assert.strictEqual(handoff.length, 2, 'handoff must be [latest checkpoint, turn 16]');
+    assert.strictEqual(handoff[0].type, 'checkpoint', 'first handoff node must be checkpoint');
+    assert.strictEqual(handoff[1].type, 'turn', 'second handoff node must be turn');
+    assert.strictEqual(handoff[1].content, 'question 16', 'turn 16 content');
+
+    const expectedCpContent = [
+      'User: question 11\nAssistant: answer 11',
+      'User: question 12\nAssistant: answer 12',
+      'User: question 13\nAssistant: answer 13',
+      'User: question 14\nAssistant: answer 14',
+      'User: question 15\nAssistant: answer 15',
+    ].join('\n');
+    assert.strictEqual(handoff[0].content, expectedCpContent, 'latest checkpoint content must be exchanges 11-15');
+
+    const text = await memory.buildContextText(sessionId);
+    assert.ok(text.includes('User: question 16\n'), 'context must contain question 16');
+    assert.ok(text.includes('User: question 11\n'), 'context must contain question 11');
+    assert.ok(!text.includes('User: question 1\n'), 'context must NOT contain question 1');
+    assert.ok(!text.includes('User: question 5\n'), 'context must NOT contain question 5');
+    assert.ok(!text.includes('User: question 10\n'), 'context must NOT contain question 10');
+
+    const headId = await memory.getHead(sessionId);
+    const byId = Object.fromEntries(allNodes.map((n) => [n.node_id, n]));
+    let currentId = headId;
+    let visited = 0;
+    let nullCount = 0;
+    while (currentId) {
+      visited++;
+      const node = byId[currentId];
+      assert.ok(node, `node ${currentId} must exist`);
+      if (node.prev_id === null) nullCount++;
+      currentId = node.prev_id;
+    }
+    assert.strictEqual(visited, 19, 'walking prev_id from head must visit all 19 nodes (16 turns + 3 checkpoints)');
+    assert.strictEqual(nullCount, 1, 'exactly one node must have prev_id null');
+  });
+
+  test(`${label}: C8 - new fields: normal exchange has provider set, failed_providers []`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c8-normal';
+
+    const node = await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'hello',
+      reply: 'hi there',
+      model_used: 'test-model',
+      status_at_this_point: 'done',
+      provider: 'openai',
+      failed_providers: [],
+    });
+
+    assert.strictEqual(node.provider, 'openai');
+    assert.deepStrictEqual(node.failed_providers, []);
+
+    const nodes = await memory.getSessionNodes(sessionId);
+    assert.strictEqual(nodes[0].provider, 'openai');
+    assert.deepStrictEqual(nodes[0].failed_providers, []);
+  });
+
+  test(`${label}: C9 - new fields: failover exchange has failed_providers ["openai"], provider "gemini"`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c9-failover';
+
+    const node = await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'hello',
+      reply: 'hi there',
+      model_used: 'gemini-model',
+      status_at_this_point: 'done',
+      provider: 'gemini',
+      failed_providers: ['openai'],
+    });
+
+    assert.strictEqual(node.provider, 'gemini');
+    assert.deepStrictEqual(node.failed_providers, ['openai']);
+
+    const nodes = await memory.getSessionNodes(sessionId);
+    assert.strictEqual(nodes[0].provider, 'gemini');
+    assert.deepStrictEqual(nodes[0].failed_providers, ['openai']);
+  });
+
+  test(`${label}: C10 - new fields: blocked exchange has provider null, failed_providers lists all tried`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c10-blocked';
+
+    const node = await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'hello',
+      reply: null,
+      model_used: 'unknown',
+      status_at_this_point: 'blocked',
+      provider: null,
+      failed_providers: ['openai', 'gemini'],
+    });
+
+    assert.strictEqual(node.provider, null);
+    assert.deepStrictEqual(node.failed_providers, ['openai', 'gemini']);
+
+    const nodes = await memory.getSessionNodes(sessionId);
+    assert.strictEqual(nodes[0].provider, null);
+    assert.deepStrictEqual(nodes[0].failed_providers, ['openai', 'gemini']);
+  });
+
+  test(`${label}: C11 - legacy nodes without new fields return defaults`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c11-legacy';
+
+    // Manually insert a node without provider/failed_providers (simulating old data)
+    const { randomUUID } = require('crypto');
+    const legacyNode = {
+      node_id: randomUUID(),
+      prev_id: null,
+      session_id: sessionId,
+      type: 'turn',
+      content: 'old node',
+      reply: 'old reply',
+      model_used: 'old-model',
+      status_at_this_point: 'done',
+      references: null,
+      timestamp: new Date().toISOString(),
+    };
+    await store.appendNodes(sessionId, [legacyNode]);
+
+    const nodes = await memory.getSessionNodes(sessionId);
+    assert.strictEqual(nodes[0].provider, null, 'legacy node should have provider null');
+    assert.deepStrictEqual(nodes[0].failed_providers, [], 'legacy node should have empty failed_providers');
+  });
+
+  test(`${label}: C12 - listSessions includes title from first turn content`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c12-title';
+
+    await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'First message content for title',
+      reply: 'reply',
+      model_used: 'm',
+      status_at_this_point: 'done',
+    });
+
+    const sessions = await memory.listSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    assert.ok(session, 'session should be listed');
+    assert.strictEqual(session.title, 'First message content for title', 'title should match first turn content');
+  });
+
+  test(`${label}: C13 - listSessions title truncated to 60 chars`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c13-title-long';
+
+    const longContent = 'A'.repeat(80);
+    await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: longContent,
+      reply: 'reply',
+      model_used: 'm',
+      status_at_this_point: 'done',
+    });
+
+    const sessions = await memory.listSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    assert.ok(session, 'session should be listed');
+    assert.strictEqual(session.title.length, 60, 'title should be truncated to 60 chars');
+    assert.strictEqual(session.title, 'A'.repeat(60));
+  });
+
+  test(`${label}: C14 - empty session has empty title`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c14-empty';
+
+    // Create session with only a checkpoint (no turns)
+    const { randomUUID } = require('crypto');
+    const cpNode = {
+      node_id: randomUUID(),
+      prev_id: null,
+      session_id: sessionId,
+      type: 'checkpoint',
+      content: 'checkpoint content',
+      model_used: '',
+      status_at_this_point: 'done',
+      references: null,
+      timestamp: new Date().toISOString(),
+    };
+    await store.appendNodes(sessionId, [cpNode]);
+
+    const sessions = await memory.listSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    assert.ok(session, 'session should be listed');
+    assert.strictEqual(session.title, '', 'session with no turns should have empty title');
+  });
 }
 
 test('fileStore contract', (t) => {

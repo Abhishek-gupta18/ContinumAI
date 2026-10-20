@@ -1,7 +1,45 @@
 const { buildProviders } = require("../providers");
 const defaultMemory = require("../memory/store");
+const { getProviderTimeoutMs } = require("../providers/timeout");
 
-function createChatHandler(providers = buildProviders(), memory = defaultMemory) {
+function callProvider(provider, request, timeoutMs) {
+  let timer;
+  const timeoutPromise = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      resolve({
+        success: false,
+        error: {
+          type: 'timeout',
+          message: `${provider.name} timed out after ${timeoutMs} ms`,
+          statusCode: 504,
+        },
+      });
+    }, timeoutMs);
+  });
+
+  const sendPromise = Promise.resolve(provider.send(request)).then(
+    (result) => result,
+    (err) => ({
+      success: false,
+      error: {
+        type: 'provider_error',
+        message: err?.message ?? String(err),
+        statusCode: 502,
+      },
+    })
+  );
+
+  const racePromise = Promise.race([sendPromise, timeoutPromise]);
+
+  racePromise.catch(() => {});
+
+  return racePromise.finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+function createChatHandler(providers = buildProviders(), memory = defaultMemory, options = {}) {
+  const providerTimeoutMs = options.providerTimeoutMs ?? getProviderTimeoutMs();
   return async function handleChatRequest(req, res) {
     const normalizedRequest = req.body;
 
@@ -64,9 +102,10 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
 
     let lastError = null;
     let lastProvider = null;
+    const failedProviders = [];
 
     for (const provider of providers) {
-      const result = await provider.send(currentRequest);
+      const result = await callProvider(provider, currentRequest, providerTimeoutMs);
 
       if (result.success) {
         console.log(
@@ -80,6 +119,8 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
             reply: result.data.reply,
             model_used: result.data.model_used,
             status_at_this_point: "done",
+            provider: provider.name,
+            failed_providers: failedProviders,
           });
         } catch (err) {
           console.error('[memory] appendNode failed after success:', err.message, err.code ?? '');
@@ -90,6 +131,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
 
       lastError = result.error;
       lastProvider = provider.name;
+      failedProviders.push(provider.name);
 
       if (lastError.type === "auth_error") {
         console.warn(
@@ -112,6 +154,8 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory)
         reply: null,
         model_used: "unknown",
         status_at_this_point: "blocked",
+        provider: null,
+        failed_providers: failedProviders,
       });
     } catch (err) {
       console.error('[memory] appendNode failed after all providers failed:', err.message, err.code ?? '');

@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const crypto = require("crypto");
 const { createChatHandler } = require("./routes/chat");
+const { createSessionsRouter } = require("./routes/sessions");
 const { buildProviders } = require("./providers");
 
 function timingSafeEqualStrings(a, b) {
@@ -15,34 +16,93 @@ function timingSafeEqualStrings(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function createAuthMiddleware(apiToken) {
+  return (req, res, next) => {
+    if (!(typeof apiToken === 'string' && apiToken.length > 0)) {
+      return next();
+    }
+
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: { type: 'unauthorized', message: 'Missing or invalid token' },
+      });
+    }
+    const token = auth.slice('Bearer '.length);
+    if (!timingSafeEqualStrings(token, apiToken)) {
+      return res.status(401).json({
+        error: { type: 'unauthorized', message: 'Missing or invalid token' },
+      });
+    }
+    return next();
+  };
+}
+
+function parseCorsOrigins(configuredOrigins) {
+  if (typeof configuredOrigins !== 'string' || configuredOrigins.trim() === '') {
+    return [];
+  }
+  const origins = configuredOrigins.split(',').map((origin) => origin.trim()).filter(Boolean);
+  if (origins.includes('*')) {
+    throw new Error('CORS_ORIGIN must not contain *');
+  }
+  for (const origin of origins) {
+    let parsed;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error('CORS_ORIGIN contains an invalid origin');
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin) {
+      throw new Error('CORS_ORIGIN contains an invalid origin');
+    }
+  }
+  return origins;
+}
+
 function createApp(options = {}) {
   const providers = options.providers || buildProviders();
   const apiToken = options.apiToken === undefined ? process.env.GATEWAY_API_TOKEN : options.apiToken;
   const memory = options.memory || require("./memory/store");
+  const corsOrigins = parseCorsOrigins(
+    options.corsOrigin === undefined ? process.env.CORS_ORIGIN : options.corsOrigin
+  );
+  const providerTimeoutMs = options.providerTimeoutMs;
 
   const app = express();
 
-  if (typeof apiToken === 'string' && apiToken.length > 0) {
-    app.post("/chat", (req, res, next) => {
-      const auth = req.headers.authorization;
-      if (!auth || !auth.startsWith('Bearer ')) {
-        return res.status(401).json({
-          error: { type: 'unauthorized', message: 'Missing or invalid token' },
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (!origin) return next();
+    if (!corsOrigins.includes(origin)) {
+      if (req.method === 'OPTIONS') {
+        return res.status(403).json({
+          error: { type: 'cors', message: 'Origin is not allowed' },
         });
       }
-      const token = auth.slice('Bearer '.length);
-      if (!timingSafeEqualStrings(token, apiToken)) {
-        return res.status(401).json({
-          error: { type: 'unauthorized', message: 'Missing or invalid token' },
-        });
-      }
-      next();
-    });
-  }
+      return res.status(403).json({
+        error: { type: 'cors', message: 'Origin is not allowed' },
+      });
+    }
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    return next();
+  });
 
+  const requireAuth = createAuthMiddleware(apiToken);
+  const sessionsRouter = createSessionsRouter(memory);
+  app.use('/chat', requireAuth);
+  app.use('/sessions', requireAuth);
   app.use(express.json());
 
-  app.post("/chat", createChatHandler(providers, memory));
+  app.post("/chat", createChatHandler(providers, memory, { providerTimeoutMs }));
+  app.get("/sessions", sessionsRouter.listSessions);
+  app.get("/sessions/:id/nodes", sessionsRouter.getSessionNodes);
 
   app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok" });

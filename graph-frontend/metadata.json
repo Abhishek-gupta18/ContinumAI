@@ -1,0 +1,6 @@
+{
+  "name": "ContinumAI Memory Graph",
+  "description": "Visual memory chain and decision tree explorer for ContinumAI multi-LLM gateway",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

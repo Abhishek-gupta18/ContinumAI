@@ -11,6 +11,8 @@ const { createApp } = require('../server');
 const { buildProviders } = require('../providers');
 const { sendToOpenAI } = require('../providers/openai');
 const { sendToGemini, classifyGeminiError } = require('../providers/gemini');
+const { sendToClaude } = require('../providers/claude');
+const { sendToOpenAICompat, createOpenAICompatSender } = require('../providers/openaiCompat');
 const store = require('../memory/store');
 const { getContextForHandoff, buildContextText, sessionFilePath } = store;
 
@@ -809,4 +811,212 @@ test('startup guard: child process with no token and no ALLOW_UNAUTHENTICATED ex
   } finally {
     fs.rmSync(emptyDir, { recursive: true, force: true });
   }
+});
+
+// D1: Provider that never resolves - timeout triggers failover to second provider
+test('D1: provider hangs, timeout triggers failover, second provider answers within 2s, timeout warning logged', async (t) => {
+  useTempSessionsDir(t);
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(' '));
+  t.after(() => { console.warn = originalWarn; });
+
+  let firstProviderCalled = false;
+  const providers = [
+    {
+      name: 'hanging',
+      send: async () => {
+        firstProviderCalled = true;
+        await new Promise(() => {}); // never resolves
+      },
+    },
+    {
+      name: 'backup',
+      send: async () => ({ success: true, data: { reply: 'backup reply', model_used: 'backup-model' } }),
+    },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 50 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const { port } = server.address();
+  const start = Date.now();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'd1-hang', message: 'hello' }),
+  });
+  const elapsed = Date.now() - start;
+
+  assert.strictEqual(res.status, 200, `expected 200, got ${res.status}`);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'backup reply');
+  assert.strictEqual(body.model_used, 'backup-model');
+  assert.ok(elapsed < 2000, `request must complete within 2s, took ${elapsed}ms`);
+  assert.ok(firstProviderCalled, 'first provider must have been called');
+  assert.ok(warnings.some(w => w.includes('hanging') && w.includes('timeout')), `expected timeout warning for hanging provider, got: ${JSON.stringify(warnings)}`);
+}, { timeout: 5000 });
+
+// D2: All providers hang - timeout returns 504, blocked node stored, returns within 2s
+test('D2: all providers hang, timeout returns 504 with blocked node, returns within 2s', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [
+    { name: 'p1', send: async () => { await new Promise(() => {}); } },
+    { name: 'p2', send: async () => { await new Promise(() => {}); } },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 50 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const { port } = server.address();
+  const start = Date.now();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'd2-allhang', message: 'hello' }),
+  });
+  const elapsed = Date.now() - start;
+
+  assert.strictEqual(res.status, 504, `expected 504, got ${res.status}`);
+  const body = await res.json();
+  assert.ok(body.error.message.includes('timed out'), `error message must contain 'timed out': ${JSON.stringify(body.error.message)}`);
+  assert.ok(elapsed < 2000, `request must complete within 2s, took ${elapsed}ms`);
+
+  // Verify blocked node was stored
+  const { createFileStore } = require('../memory/fileStore');
+  const { createMemory } = require('../memory/memory');
+  const store = createFileStore();
+  const memory = createMemory(store);
+  const nodes = await memory.getAllNodes('d2-allhang');
+  const turns = nodes.filter(n => n.type === 'turn');
+  assert.strictEqual(turns.length, 1, 'exactly one turn node stored');
+  assert.strictEqual(turns[0].status_at_this_point, 'blocked', 'turn must be blocked');
+  assert.strictEqual(turns[0].reply, null, 'blocked turn must have null reply');
+  assert.strictEqual(turns[0].content, 'hello', 'blocked turn must have user message');
+}, { timeout: 5000 });
+
+// D3: Provider throws/rejects -> provider_error (502) and failover continues
+test('D3: provider throws, treated as provider_error (502), failover continues', async (t) => {
+  useTempSessionsDir(t);
+
+  let firstProviderCalled = false;
+  const providers = [
+    {
+      name: 'throwing',
+      send: async () => {
+        firstProviderCalled = true;
+        throw new Error('simulated failure');
+      },
+    },
+    {
+      name: 'backup',
+      send: async () => ({ success: true, data: { reply: 'backup reply', model_used: 'backup-model' } }),
+    },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 5000 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'd3-throw', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 200, `expected 200, got ${res.status}`);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'backup reply');
+  assert.strictEqual(body.model_used, 'backup-model');
+  assert.ok(firstProviderCalled, 'first provider must have been called');
+}, { timeout: 5000 });
+
+// D4: Late settlement - provider resolves/rejects AFTER deadline -> no unhandled rejection, no second response, exactly one memory node
+test('D4: late settlement after deadline - no unhandled rejection, single response, one memory node', async (t) => {
+  useTempSessionsDir(t);
+
+  const unhandledRejections = [];
+  const handler = (reason) => unhandledRejections.push(reason);
+  process.on('unhandledRejection', handler);
+  t.after(() => process.off('unhandledRejection', handler));
+
+  let resolveLate;
+  const latePromise = new Promise((resolve) => { resolveLate = resolve; });
+
+  const providers = [
+    {
+      name: 'late',
+      send: async () => {
+        await latePromise;
+        return { success: true, data: { reply: 'late reply', model_used: 'late-model' } };
+      },
+    },
+    {
+      name: 'backup',
+      send: async () => ({ success: true, data: { reply: 'backup reply', model_used: 'backup-model' } }),
+    },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 50 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'd4-late', message: 'hello' }),
+  });
+
+  // Wait for response to complete
+  await res.json();
+
+  // Now resolve the late promise (after deadline)
+  resolveLate({ success: true, data: { reply: 'late reply', model_used: 'late-model' } });
+
+  // Give event loop time to process any late rejections
+  await new Promise(r => setTimeout(r, 200));
+
+  assert.strictEqual(unhandledRejections.length, 0, `no unhandled rejections allowed, got: ${JSON.stringify(unhandledRejections)}`);
+
+  // Verify exactly one memory node was written (the successful one from backup)
+  const { createFileStore } = require('../memory/fileStore');
+  const { createMemory } = require('../memory/memory');
+  const store = createFileStore();
+  const memory = createMemory(store);
+  const nodes = await memory.getAllNodes('d4-late');
+  const turns = nodes.filter(n => n.type === 'turn');
+  assert.strictEqual(turns.length, 1, 'exactly one turn node must be stored');
+  assert.strictEqual(turns[0].reply, 'backup reply', 'stored reply must be from backup provider');
+  assert.strictEqual(turns[0].model_used, 'backup-model', 'stored model must be from backup provider');
+}, { timeout: 5000 });
+
+// D5: getProviderTimeoutMs edge cases
+test('D5: getProviderTimeoutMs returns 30000 for unset, empty, 0, abc; returns 1500 for 1500', () => {
+  const { getProviderTimeoutMs } = require('../providers/timeout');
+
+  const originalEnv = { ...process.env };
+  delete process.env.PROVIDER_TIMEOUT_MS;
+  try {
+    assert.strictEqual(getProviderTimeoutMs(), 30000, 'unset -> 30000');
+  } finally { process.env.PROVIDER_TIMEOUT_MS = originalEnv.PROVIDER_TIMEOUT_MS; }
+
+  process.env.PROVIDER_TIMEOUT_MS = '';
+  assert.strictEqual(getProviderTimeoutMs(), 30000, "'' -> 30000");
+  process.env.PROVIDER_TIMEOUT_MS = '0';
+  assert.strictEqual(getProviderTimeoutMs(), 30000, "'0' -> 30000");
+  process.env.PROVIDER_TIMEOUT_MS = 'abc';
+  assert.strictEqual(getProviderTimeoutMs(), 30000, "'abc' -> 30000");
+  process.env.PROVIDER_TIMEOUT_MS = '1500';
+  assert.strictEqual(getProviderTimeoutMs(), 1500, "'1500' -> 1500");
+  delete process.env.PROVIDER_TIMEOUT_MS;
 });

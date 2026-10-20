@@ -32,6 +32,15 @@ continumai/
 ### API Routes
 
 - **POST /chat** — Accepts normalized request body, dispatches to appropriate provider with failover logic, returns normalized response or structured error.
+- **GET /sessions** — Requires the configured Bearer token and returns persisted session metadata:
+  `{ "sessions": [{ "id": string, "node_count": number, "latest_activity": string | null, "models": string[] }] }`.
+- **GET /sessions/:id/nodes** — Requires the configured Bearer token and returns the persisted nodes for one validated session:
+  `{ "session_id": string, "nodes": [...] }`. Unknown sessions return `404`.
+
+`CORS_ORIGIN` must contain a comma-separated list of explicit `http` or `https` origins
+when the API is called from a browser. Wildcard origins are rejected. Requests from
+origins outside the configured list are rejected with `403`; requests without an
+`Origin` header remain available for non-browser clients.
 
 ### How It Works
 
@@ -48,6 +57,20 @@ npm install        # installs dependencies
 cp .env.example .env # or edit .env directly
 node server.js     # starts on port 3000
 ```
+
+`server.js` loads `.env` automatically through `dotenv`. Before starting locally,
+set a non-empty `GATEWAY_API_TOKEN` in the environment or in the local `.env`
+file. In PowerShell, set it for the current terminal session without committing
+it:
+
+```powershell
+$env:GATEWAY_API_TOKEN = Read-Host "Enter GATEWAY_API_TOKEN"
+npm start
+```
+
+The server refuses to start when the token is missing unless
+`ALLOW_UNAUTHENTICATED=true` is explicitly set for development-only use. Do not
+use that bypass for integration or production testing.
 
 ### Tested Scenarios
 

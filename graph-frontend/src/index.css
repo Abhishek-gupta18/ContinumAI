@@ -1,0 +1,73 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+/* Obsidian Dark Theme Baseline */
+:root {
+  color-scheme: dark;
+  --bg-main: #101013;
+  --bg-sidebar: #141417;
+  --bg-card: #17171c;
+  --border-color: #24242c;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #101013;
+  color: #dcddde;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Obsidian Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #141417;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2b2b36;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3c3d4c;
+}
+
+/* React Flow Dark Theme Customization */
+.react-flow__controls {
+  background-color: #17171d !important;
+  border: 1px solid #282834 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background-color: #17171d !important;
+  border-bottom: 1px solid #24242e !important;
+  color: #9b9cae !important;
+  fill: #9b9cae !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: #22222b !important;
+  color: #f1f1f5 !important;
+  fill: #f1f1f5 !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+}
+
+.react-flow__edge-text {
+  fill: #c084fc !important;
+  font-family: monospace;
+}

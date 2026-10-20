@@ -1,9 +1,19 @@
-const { Anthropic } = require("@anthropic-ai/sdk");
 const { classifyError } = require("./errorClassifier");
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy client: constructing the SDK at module load throws when the key is
+// missing, which crashed the app even when buildProviders() had skipped this
+// provider. Construct on first call instead, and cache it.
+let anthropicClient = null;
+
+function getClient() {
+  if (!anthropicClient) {
+    const { Anthropic } = require("@anthropic-ai/sdk");
+    anthropicClient = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropicClient;
+}
 
 async function sendToClaude(normalizedRequest) {
   const { session_id, message } = normalizedRequest;
@@ -11,7 +21,7 @@ async function sendToClaude(normalizedRequest) {
   console.log(`[claude] Sending request for session ${session_id}`);
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getClient().messages.create({
       model: "claude-3-5-sonnet-20240620",
       max_tokens: 1000,
       messages: [

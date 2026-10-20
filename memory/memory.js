@@ -90,6 +90,8 @@ function createMemory(store) {
         model_used: nodeFields.model_used || '',
         status_at_this_point: nodeFields.status_at_this_point || 'in_progress',
         references: nodeFields.references !== undefined ? nodeFields.references : null,
+        provider: nodeFields.provider ?? null,
+        failed_providers: nodeFields.failed_providers ?? [],
         timestamp: new Date().toISOString(),
       };
 
@@ -116,6 +118,14 @@ function createMemory(store) {
     return store.getAllNodes(sessionId);
   }
 
+  async function getSessionNodes(sessionId) {
+    return store.getSessionNodes(sessionId);
+  }
+
+  async function listSessions() {
+    return store.listSessions();
+  }
+
   async function getHead(sessionId) {
     return store.getHead(sessionId);
   }
@@ -125,6 +135,8 @@ function createMemory(store) {
     getContextForHandoff,
     buildContextText,
     getAllNodes,
+    getSessionNodes,
+    listSessions,
     getHead,
   };
 }
