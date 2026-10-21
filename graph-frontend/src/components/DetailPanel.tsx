@@ -50,7 +50,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
     return (
       <aside
         id="obsidian-detail-sidebar-collapsed"
-        className="h-full w-12 bg-[#141417] border-l border-[#24242c] flex flex-col items-center py-3 shrink-0"
+        className="h-full w-12 bg-[#16161d] border-l border-[#272733] flex flex-col items-center py-3 shrink-0"
       >
         <button
           id="expand-detail-btn"
@@ -102,7 +102,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
       return {
         from: parentDisplay,
         to: currentDisplay,
-        text: `${parentDisplay} failed (1 tried), ${currentDisplay} answered`,
+        text: `Answered by ${currentDisplay}. The previous turn was answered by ${parentDisplay}.`,
       };
     }
     return null;
@@ -111,10 +111,10 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
   return (
     <aside
       id="obsidian-detail-sidebar"
-      className="h-full w-80 lg:w-96 bg-[#141417] border-l border-[#24242c] flex flex-col shrink-0 overflow-hidden"
+      className="h-full w-80 lg:w-96 bg-[#16161d] border-l border-[#272733] flex flex-col shrink-0 overflow-hidden"
     >
       {/* Header */}
-      <div className="h-14 px-4 flex items-center justify-between border-b border-[#24242c] shrink-0 bg-[#17171b]">
+      <div className="h-14 px-4 flex items-center justify-between border-b border-[#272733] shrink-0 bg-[#1b1b23]">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-xs text-[#dcdde7] uppercase tracking-wider">
             Node Inspector
@@ -162,7 +162,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Metadata Card */}
-          <div className="p-3.5 rounded-xl bg-[#1a1a20] border border-[#272732] space-y-3">
+          <div className="p-3.5 rounded-xl bg-[#1e1e27] border border-[#272732] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium text-[#7d7e92] uppercase tracking-wider">
                 Node Type

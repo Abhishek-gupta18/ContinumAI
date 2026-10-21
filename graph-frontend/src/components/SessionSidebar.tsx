@@ -37,12 +37,12 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   return (
     <aside
       id="obsidian-sessions-sidebar"
-      className={`h-full flex flex-col bg-[#141417] border-r border-[#24242c] transition-all duration-300 ease-in-out shrink-0 select-none ${
+      className={`h-full flex flex-col bg-[#16161d] border-r border-[#272733] transition-all duration-300 ease-in-out shrink-0 select-none ${
         collapsed ? 'w-14' : 'w-72 lg:w-80'
       }`}
     >
       {/* Header */}
-      <div className="h-14 px-3 flex items-center justify-between border-b border-[#24242c] shrink-0">
+      <div className="h-14 px-3 flex items-center justify-between border-b border-[#272733] shrink-0">
         {!collapsed && (
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
@@ -90,7 +90,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       {!collapsed && (
         <>
           {/* Search bar */}
-          <div className="p-3 border-b border-[#24242c]">
+          <div className="p-3 border-b border-[#272733]">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#68697c]" />
               <input
@@ -195,7 +195,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
           </div>
 
           {/* Footer - Gateway telemetry */}
-          <div className="p-3 border-t border-[#24242c] bg-[#121215] text-[11px] space-y-1.5">
+          <div className="p-3 border-t border-[#272733] bg-[#16161d] text-[11px] space-y-1.5">
             <div className="flex items-center justify-between text-[#858699]">
               <span className="flex items-center gap-1.5">
                 <Shield className="w-3 h-3 text-indigo-400" />

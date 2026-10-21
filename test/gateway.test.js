@@ -1020,3 +1020,119 @@ test('D5: getProviderTimeoutMs returns 30000 for unset, empty, 0, abc; returns 1
   assert.strictEqual(getProviderTimeoutMs(), 1500, "'1500' -> 1500");
   delete process.env.PROVIDER_TIMEOUT_MS;
 });
+
+// Reads the turn nodes chat.js persisted for a session, via the default file store.
+async function readSavedTurns(sessionId) {
+  const { createFileStore } = require('../memory/fileStore');
+  const { createMemory } = require('../memory/memory');
+  const memory = createMemory(createFileStore());
+  const nodes = await memory.getAllNodes(sessionId);
+  return nodes.filter(n => n.type === 'turn');
+}
+
+test('failover to second provider: saved node has provider=second, failed_providers=[first]', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [
+    { name: 'stub-a', send: async () => makeError('rate_limit_error', 'Rate limit exceeded', 429) },
+    { name: 'stub-b', send: async () => makeSuccess('reply from stub-b', 'stub-b-model') },
+  ];
+
+  const server = await startServer(t, providers);
+  const res = await chat(server, 'fo-second-serves', 'hello');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'reply from stub-b');
+
+  const turns = await readSavedTurns('fo-second-serves');
+  assert.strictEqual(turns.length, 1);
+  assert.strictEqual(turns[0].provider, 'stub-b');
+  assert.deepStrictEqual(turns[0].failed_providers, ['stub-a']);
+  assert.strictEqual(turns[0].reply, 'reply from stub-b');
+  assert.strictEqual(turns[0].status_at_this_point, 'done');
+});
+
+test('all providers fail: saved node has provider null, failed_providers in order, reply null, blocked', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [
+    { name: 'stub-a', send: async () => makeError('rate_limit_error', 'rate limited', 429) },
+    { name: 'stub-b', send: async () => makeError('provider_error', 'boom', 502) },
+  ];
+
+  const server = await startServer(t, providers);
+  const res = await chat(server, 'fo-all-fail', 'hello');
+  assert.strictEqual(res.status, 502);
+
+  const turns = await readSavedTurns('fo-all-fail');
+  assert.strictEqual(turns.length, 1);
+  assert.strictEqual(turns[0].provider, null);
+  assert.deepStrictEqual(turns[0].failed_providers, ['stub-a', 'stub-b']);
+  assert.strictEqual(turns[0].reply, null);
+  assert.strictEqual(turns[0].status_at_this_point, 'blocked');
+});
+
+test('first provider succeeds: saved node has failed_providers []', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [
+    { name: 'stub-a', send: async () => makeSuccess('reply from stub-a', 'stub-a-model') },
+  ];
+
+  const server = await startServer(t, providers);
+  const res = await chat(server, 'fo-first-serves', 'hello');
+  assert.strictEqual(res.status, 200);
+
+  const turns = await readSavedTurns('fo-first-serves');
+  assert.strictEqual(turns.length, 1);
+  assert.strictEqual(turns[0].provider, 'stub-a');
+  assert.deepStrictEqual(turns[0].failed_providers, []);
+  assert.strictEqual(turns[0].status_at_this_point, 'done');
+});
+
+test('GET /providers lists enabled provider names', async (t) => {
+  const providers = [
+    { name: 'stub-a', send: async () => makeSuccess('r', 'm') },
+    { name: 'stub-b', send: async () => makeSuccess('r', 'm') },
+  ];
+
+  const server = await startServer(t, providers);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/providers`);
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.deepStrictEqual(body.providers, ['stub-a', 'stub-b']);
+});
+
+test('preferred provider is tried first, failover still available; unknown provider -> 400', async (t) => {
+  useTempSessionsDir(t);
+
+  const calls = [];
+  const providers = [
+    { name: 'stub-a', send: async () => { calls.push('stub-a'); return makeError('provider_error', 'down', 502); } },
+    { name: 'stub-b', send: async () => { calls.push('stub-b'); return makeSuccess('reply from stub-b', 'stub-b-model'); } },
+  ];
+
+  const server = await startServer(t, providers);
+  const { port } = server.address();
+  const post = (sessionId, body) => fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, message: 'hello', ...body }),
+  });
+
+  const res = await post('fo-preferred', { provider: 'stub-b' });
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'reply from stub-b');
+  assert.deepStrictEqual(calls, ['stub-b']);
+
+  const resUnknown = await post('fo-preferred-unknown', { provider: 'nope' });
+  assert.strictEqual(resUnknown.status, 400);
+  const errBody = await resUnknown.json();
+  assert.strictEqual(errBody.error.type, 'validation');
+  assert.ok(errBody.error.message.includes('Available: stub-a, stub-b'));
+
+  const turns = await readSavedTurns('fo-preferred');
+  assert.strictEqual(turns[0].provider, 'stub-b');
+  assert.deepStrictEqual(turns[0].failed_providers, []);
+});

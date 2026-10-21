@@ -80,6 +80,28 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
       });
     }
 
+    // Optional per-request provider preference: try the requested provider
+    // first, then fail over through the rest of the chain.
+    const requestedProvider = normalizedRequest.provider;
+    let chain = providers;
+    if (requestedProvider !== undefined && requestedProvider !== null) {
+      if (typeof requestedProvider !== 'string') {
+        return res.status(400).json({
+          error: { type: "validation", message: "provider must be a string" },
+        });
+      }
+      const preferred = providers.find((p) => p.name === requestedProvider);
+      if (!preferred) {
+        return res.status(400).json({
+          error: {
+            type: "validation",
+            message: `Unknown provider "${requestedProvider}". Available: ${providers.map((p) => p.name).join(", ")}`,
+          },
+        });
+      }
+      chain = [preferred, ...providers.filter((p) => p !== preferred)];
+    }
+
     let contextText;
     try {
       contextText = await memory.buildContextText(session_id);
@@ -104,7 +126,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
     let lastProvider = null;
     const failedProviders = [];
 
-    for (const provider of providers) {
+    for (const provider of chain) {
       const result = await callProvider(provider, currentRequest, providerTimeoutMs);
 
       if (result.success) {

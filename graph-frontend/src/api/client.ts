@@ -92,9 +92,17 @@ export function getSessionNodes(sessionId: string): Promise<NodesResponse> {
   }));
 }
 
-export function sendChat(sessionId: string, message: string): Promise<ChatResponse> {
+export interface ProvidersResponse {
+  providers: string[];
+}
+
+export function getProviders(): Promise<ProvidersResponse> {
+  return request<ProvidersResponse>('/providers');
+}
+
+export function sendChat(sessionId: string, message: string, provider?: string): Promise<ChatResponse> {
   return request<ChatResponse>('/chat', {
     method: 'POST',
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify(provider ? { session_id: sessionId, message, provider } : { session_id: sessionId, message }),
   });
 }

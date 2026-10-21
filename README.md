@@ -1,195 +1,224 @@
+<div align="center">
+
 # ContinumAI
 
-A cloud-based AI gateway that connects multiple LLM providers behind a single unified API.
+**A multi-LLM gateway with a shared memory chain — one API, many providers, complete failover, zero context loss.**
 
-## Phase 1: Single-Provider GPT Pipeline ✅
+[![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=nodedotjs&logoColor=white)](package.json)
+[![Express](https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white)](package.json)
+[![React + Vite](https://img.shields.io/badge/frontend-react%20%2B%20vite-61DAFB?logo=react&logoColor=black)](graph-frontend)
+[![Tests](https://img.shields.io/badge/tests-76%20passing-4c1)](package.json)
+[![License](https://img.shields.io/badge/license-ISC-blue)](#license)
 
-**Goal:** Working single-provider GPT backend with normalized request/response format, environment-based API keys, and structured error handling.
+</div>
 
-### Project Structure
+---
+
+## What It Does
+
+Send a message to `POST /chat` and ContinumAI:
+
+1. **Routes it across a provider chain** — OpenAI → Gemini → Claude → NVIDIA NIM → any OpenAI-compatible endpoint — with automatic failover on rate limits and provider errors, and a per-provider call deadline.
+2. **Records the exchange in a memory chain** — every turn becomes a node linked by `prev_id`, carrying which provider answered, which providers failed, and the turn status.
+3. **Compacts history into checkpoints** — every 5 turns the chain folds into a checkpoint node, so context stays small no matter how long the conversation runs.
+4. **Never loses the thread** — the next turn's prompt is rebuilt from the chain, and model handoffs happen transparently mid-conversation.
+
+A React front-end (colony-style graph canvas) visualizes the whole chain — providers, failovers, branches, checkpoints.
+
+## Architecture
 
 ```
-continumai/
-├── .env                # API keys (OPENAI_API_KEY) — never committed to source control
-├── package.json        # Dependencies: express, openai, dotenv, @anthropic-ai/sdk
-├── server.js           # Express entry point, POST /chat
-├── providers/
-│   ├── errorClassifier.js  ← SHARED — error classification: 401→auth_error, 429→rate_limit_error, 5xx→provider_error, else→generic
-│   ├── openai.js       ← sendToOpenAI(normalizedRequest) — GPT adapter
-│   └── claude.js       ← sendToClaude(normalizedRequest) — Claude adapter (Phase 2)
-└── routes/
-    └── chat.js         ← handleChatRequest — normalized format only, failover logic (Phase 2)
+                        ┌────────────────────────────────────────────┐
+  POST /chat ──────────►│  routes/chat.js                            │
+                        │  build prompt from memory chain            │
+                        │  iterate providers:  openai, gemini,       │
+                        │  claude, nvidia, openai_compat             │
+                        │  per-provider timeout (PROVIDER_TIMEOUT_MS)│
+                        └──────────────┬─────────────────────────────┘
+                                       │ first success wins
+                                       │ failures appended to failed_providers
+                        ┌──────────────▼─────────────────────────────┐
+                        │  memory layer (memory/)                    │
+                        │  file store ─ data/sessions/*.json         │
+                        │  pg store ─ Supabase/Postgres (optional)   │
+                        │  5 turns → auto-checkpoint                 │
+                        └──────────────┬─────────────────────────────┘
+                                       │
+                        ┌──────────────▼─────────────────────────────┐
+                        │  graph-frontend (Vite + React)             │
+                        │  colony canvas · inspector · landing page  │
+                        │  reads via GET /sessions, Proxied by Vite  │
+                        └────────────────────────────────────────────┘
 ```
 
-### Normalized Formats
+### Failover Rules
 
-**Request:** `{ session_id: string, message: string }`
+| Situation | Behavior |
+|---|---|
+| `rate_limit_error` / `provider_error` / timeout | Move to the next provider, record the failure |
+| `auth_error` | Also fails over, with a "key looks invalid" warning logged before moving to the next provider |
+| All providers fail | Turn is stored as `status: blocked`, `provider: null`, `failed_providers` lists every attempt in order, structured error returned |
 
-**Response:** `{ session_id: string, reply: string, model_used: string, raw_provider_response: object }`
+Every stored node records `provider` (who answered) and `failed_providers` (who didn't), which is what the inspector and graph use to visualize handoffs.
 
-**Error:** `{ type: "auth_error" | "rate_limit_error" | "provider_error" | "generic", message: string, statusCode: number }`
+## Quickstart
 
-### API Routes
-
-- **POST /chat** — Accepts normalized request body, dispatches to appropriate provider with failover logic, returns normalized response or structured error.
-- **GET /sessions** — Requires the configured Bearer token and returns persisted session metadata:
-  `{ "sessions": [{ "id": string, "node_count": number, "latest_activity": string | null, "models": string[] }] }`.
-- **GET /sessions/:id/nodes** — Requires the configured Bearer token and returns the persisted nodes for one validated session:
-  `{ "session_id": string, "nodes": [...] }`. Unknown sessions return `404`.
-
-`CORS_ORIGIN` must contain a comma-separated list of explicit `http` or `https` origins
-when the API is called from a browser. Wildcard origins are rejected. Requests from
-origins outside the configured list are rejected with `403`; requests without an
-`Origin` header remain available for non-browser clients.
-
-### How It Works
-
-1. Request hits `POST /chat`
-2. Route tries **GPT** (`sendToOpenAI`)
-3. On `rate_limit_error` or `provider_error` → automatic failover to **Claude** (`sendToClaude`)
-4. On `auth_error` → returned immediately, no failover
-5. All errors classified via shared `providers/errorClassifier.js`
-
-### Running
+### Backend
 
 ```bash
-npm install        # installs dependencies
-cp .env.example .env # or edit .env directly
-node server.js     # starts on port 3000
+npm install
+cp .env.example .env    # fill in at least one provider key + GATEWAY_API_TOKEN
+npm start               # http://localhost:3000
 ```
 
-`server.js` loads `.env` automatically through `dotenv`. Before starting locally,
-set a non-empty `GATEWAY_API_TOKEN` in the environment or in the local `.env`
-file. In PowerShell, set it for the current terminal session without committing
-it:
+In PowerShell, set the gateway token for the current session without committing it:
 
 ```powershell
 $env:GATEWAY_API_TOKEN = Read-Host "Enter GATEWAY_API_TOKEN"
 npm start
 ```
 
-The server refuses to start when the token is missing unless
-`ALLOW_UNAUTHENTICATED=true` is explicitly set for development-only use. Do not
-use that bypass for integration or production testing.
+The server refuses to start when `GATEWAY_API_TOKEN` is missing unless `ALLOW_UNAUTHENTICATED=true` is set (development only).
 
-### Tested Scenarios
+### Frontend
 
-- ✅ Valid GPT request (rate-limited key returns structured 429 error)
-- ✅ Invalid API key → `{type: "auth_error", message: "Invalid API key"}`, HTTP 401
-- ✅ GPT failure → failover to Claude (Phase 2)
-- ✅ `auth_error` does NOT trigger Claude failover
-- ✅ Response shape matches normalized format exactly
+```bash
+cd graph-frontend
+npm install
+npm run dev             # http://localhost:5173 — proxies /chat, /sessions, /health to :3000
+```
 
----
+The Vite dev proxy strips the browser `Origin` header and injects the gateway token (`GATEWAY_API_TOKEN` in `graph-frontend/.env`), so the backend's fail-closed CORS accepts it.
 
-## Phase 2: Claude Provider + Failover ✅ (Current)
+### Tests
 
-**Goal:** Add Anthropic Claude as a second provider with automatic failover from GPT.
+```bash
+npm test    # 76 tests — stub providers only, never calls real APIs
+```
 
-### What Was Built
+Set `TEST_DATABASE_URL` to also run the Postgres memory contract suite against a throwaway schema (auto-dropped).
 
-| File | Purpose |
-|---|---|
-| `providers/errorClassifier.js` | Shared error classification imported by both providers |
-| `providers/openai.js` | Updated to use shared `classifyError` instead of inline logic |
-| `providers/claude.js` | New — `sendToClaude()` using `@anthropic-ai/sdk`, errors classified via `errorClassifier` |
-| `routes/chat.js` | Updated — GPT → Claude failover on `rate_limit_error`/`provider_error`; no failover on `auth_error` |
-| `package.json` | Added `@anthropic-ai/sdk` dependency |
-| `.env` | Added `ANTHROPIC_API_KEY` |
+## API
 
-### Failover Logic
-
-1. Try **GPT** first
-2. On `rate_limit_error` or `provider_error` → automatically retry against **Claude**
-3. On `auth_error` → return immediately, **do not** try Claude
-4. If Claude also fails → return its structured error
-5. Logs show which provider served the request and why failover occurred
-
-### Timeline
-
-| Date | Work Done |
-|---|---|
-| 2026-09-15 | Project initialized — Node.js + Express + dotenv |
-| 2026-09-15 | Phase 1: Created project structure, normalized format, `providers/openai.js`, `routes/chat.js`, `server.js` |
-| 2026-09-15 | Phase 1 verified — error handling, API key from env, response shape, module isolation |
-| 2026-09-15 | Phase 2: Added `@anthropic-ai/sdk` dependency |
-| 2026-09-15 | Phase 2: Created `providers/errorClassifier.js` — shared error classification logic |
-| 2026-09-15 | Phase 2: Updated `providers/openai.js` to import shared `classifyError` |
-| 2026-09-15 | Phase 2: Created `providers/claude.js` with `sendToClaude()` using Anthropic SDK |
-| 2026-09-15 | Phase 2: Updated `routes/chat.js` with failover logic: GPT → Claude on rate_limit/provider_error |
-| 2026-09-15 | Phase 2: Added `ANTHROPIC_API_KEY` to `.env` |
-| 2026-09-15 | Phase 2: Verified failover works — GPT rate_limit triggers Claude fallback |
-| 2026-09-15 | Phase 2: Verified `auth_error` does NOT trigger Claude failover — returned immediately |
-| 2026-09-15 | Phase 2: All modules load successfully, contracts consistent, no code duplication |
-
-### Future Phases (Planned)
-
-| Phase | Goal |
-|---|---|
-| 3 | Memory layer — shared context, checkpoints, handoff between models |
-| 4 | Automatic failover optimization — latency-based, token-limit-aware switching |
-| 5 | Dashboard — request tracking, provider health metrics, failover analytics |
-
----
-
-## Decision Ladder (Senior Dev Approach)
-
-Before writing any code, every decision follows this priority:
-
-1. **YAGNI** — Does this need to exist at all?
-2. **Standard library** — Can built-in features do it?
-3. **Native runtime** — Can the platform/runtime do it?
-4. **Existing dependency** — Is there already an installed package that covers it?
-5. **One line** — Can it be done in a single line?
-6. **Minimum new code** — Write only what's required, nothing extra, nothing speculative
-
-This approach ensures the simplest possible solution that correctly meets the current requirement without over-engineering.
-
----
-
-## Project Goals
-
-- **Long-term:** Automatic failover between LLM providers when one hits rate limits or token limits, plus a shared memory layer for handing off tasks between models
-- **Phase 1 (done):** Single-provider GPT pipeline with normalized format and structured errors
-- **Phase 2 (done):** Add Claude provider + automatic failover between GPT and Claude
-- **Future:** Memory layer + intelligent failover + dashboard
-
-## Railway Deployment
-
-### Required Environment Variables (set in Railway Dashboard)
-
-| Variable | Required | Notes |
+| Endpoint | Method | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | Yes | OpenAI API key for GPT provider |
-| `GEMINI_API_KEY` | Yes | Google Gemini API key for Gemini provider |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude provider (currently parked but slot reserved) |
-| `PORT` | No | Railway sets this automatically; server.js reads `process.env.PORT` |
+| `/chat` | `POST` | Body: `{ "session_id": "...", "message": "...", "provider": "nvidia" (optional) }` — `provider`, if set, is tried first with the normal failover chain after it |
+| `/sessions` | `GET` | Bearer token required — list of `{ id, node_count, latest_activity, models, title }` |
+| `/sessions/:id/nodes` | `GET` | Bearer token required — all nodes for a session; `404` for unknown sessions |
+| `/providers` | `GET` | Bearer token required — enabled provider names (those with configured API keys), used by the front-end selector |
+| `/health` | `GET` | `{ "status": "ok" }` |
 
-### Persistent Volume
+Error shape (all endpoints): `{ error: { type, message, statusCode } }` with types `auth_error`, `rate_limit_error`, `provider_error`, `validation`, `memory_unavailable`, `no_providers`.
 
-The `railway.json` configures a volume named `sessions` mounted at `/app/data/sessions`. This maps to `memory/store.js` which writes session JSON files to `data/sessions/` (resolves to `/app/data/sessions` in container). Session history survives redeploys/restarts.
+**CORS is fail-closed:** set `CORS_ORIGIN` to comma-separated explicit `http`/`https` origins when a browser calls the API. Wildcards are rejected; origins outside the list get `403`. Requests without an `Origin` header (server-to-server) are unaffected.
 
-### Manual Deployment Steps
+## Memory Model
 
-1. **Create Railway Project**: Go to Railway dashboard → New Project → Deploy from GitHub repo
-2. **Connect Repository**: Select this GitHub repo, Railway auto-detects Node.js from package.json
-3. **Add Environment Variables**: In service settings → Variables, add the three API keys above
-4. **Attach Persistent Volume**: 
-   - In service settings → Volumes → Add Volume
-   - Name: `sessions`
-   - Mount Path: `/app/data/sessions`
-   - (Or let railway.json handle it — volume config is in code)
-5. **Deploy**: Trigger deploy; Railway runs `node server.js` per railway.json
+Nodes form a chain per session (`prev_id` links), stored either as JSON files or in Postgres:
 
-### Verification (after deploy)
+```json
+{
+  "node_id": "...",
+  "prev_id": "...",
+  "type": "turn | decision | checkpoint",
+  "content": "user message",
+  "reply": "model reply | null",
+  "model_used": "gpt",
+  "provider": "openai | null",
+  "failed_providers": [],
+  "status_at_this_point": "done | in_progress | blocked",
+  "timestamp": "..."
+}
+```
 
-1. **Health check**: `GET https://<your-app>.up.railway.app/health` → `{ "status": "ok" }`
-2. **Context restoration**: 
-   - `POST /chat` with `session_id: "test-123"` and a message
-   - `POST /chat` with same `session_id` and follow-up → confirm context retained
-3. **Volume persistence**: 
-   - Trigger redeploy/restart in Railway
-   - `POST /chat` with same `session_id` → confirm prior history still present
+- `blocked` turns (all providers failed) are stored but excluded from future prompts and checkpoints.
+- Checkpoints hold the text of their 5 covered turns; handoff context = latest checkpoint + trailing turns (≤ 10 `User:` blocks in any prompt).
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | one of the providers | OpenAI (GPT) |
+| `GEMINI_API_KEY` | one of the providers | Google Gemini |
+| `ANTHROPIC_API_KEY` | one of the providers | Anthropic Claude |
+| `NVIDIA_API_KEY` | one of the providers | NVIDIA NIM (Nemotron, OpenAI-compatible endpoint) |
+| `NVIDIA_MODEL` | no | NIM model override (default `nvidia/llama-3.1-nemotron-70b-instruct`) |
+| `OPENAI_COMPAT_BASE_URL` / `_API_KEY` / `_MODEL` | no | Generic OpenAI-compatible provider slot |
+| `GATEWAY_API_TOKEN` | yes (prod) | Bearer token for authed endpoints |
+| `ALLOW_UNAUTHENTICATED` | no | Dev-only bypass for the token |
+| `CORS_ORIGIN` | no | Comma-separated allowed browser origins (fail-closed) |
+| `PROVIDER_TIMEOUT_MS` | no | Per-provider call deadline, default 30000 |
+| `DATABASE_URL` | no | When set, memory uses Postgres/Supabase instead of files |
+| `SESSIONS_DIR` | no | Override the file-store directory |
+
+Only one provider key needs to be present — enabled providers join the chain automatically.
+
+## Project Structure
+
+```
+continumai/
+├── server.js               # Express app factory, auth, CORS, health
+├── routes/
+│   ├── chat.js             # Provider chain, failover, memory writes
+│   └── sessions.js         # GET /sessions, GET /sessions/:id/nodes
+├── providers/
+│   ├── index.js            # buildProviders() — registry driven by env keys
+│   ├── openai.js / gemini.js / claude.js
+│   ├── nvidia.js           # NIM wrapper over the shared OpenAI-compat sender
+│   ├── openaiCompat.js     # reusable OpenAI-compatible sender
+│   ├── errorClassifier.js  # shared error classification
+│   └── timeout.js          # provider deadline parsing
+├── memory/
+│   ├── memory.js           # chain, checkpoints, serialization per session
+│   ├── fileStore.js        # default store — data/sessions/*.json
+│   ├── pgStore.js / pgPool.js   # Postgres store (used when DATABASE_URL set)
+├── db/schema.sql           # Postgres schema (npm run migrate)
+├── scripts/migrate.js      # applies db/schema.sql
+├── test/                   # node:test — gateway, memory contracts, sessions
+└── graph-frontend/         # Vite + React
+    └── src/
+        ├── App.tsx         # workspace: graph canvas + inspector + chat bar
+        ├── pages/          # Root (hash router), Landing, demo pages
+        ├── auth.ts         # demo-only mock auth (no backend yet)
+        ├── api/client.ts   # real data layer — /sessions, /chat
+        └── components/     # ColonyCanvasView, DetailPanel, SessionSidebar, nodes/
+```
+
+## Frontend
+
+Landing page → **Open Workspace** → the memory-graph workspace:
+
+- **Colony canvas** — d3-force particle graph clustered around checkpoints; node color = answering provider; `decision` nodes branch, dashed edges are references.
+- **Node inspector** — prompt/reply, provider badge (OpenAI / Gemini / Claude / unknown), failover banner (`"A > B failed, C answered"` — wording only appears when `failed_providers` is non-empty), lineage jumping.
+- **Session sidebar** — persisted session list with filter, fork/count stats.
+- **Demo pages** (Sign in, Provider keys, Gateway tokens, Account) are clearly labelled **"Demo, not saved"** — no backend exists for them; typed keys are never stored anywhere.
+
+Routes are hash-based: `#/` landing, `#/app` workspace, `#/demo/*` demo pages.
+
+## Deployment (Railway)
+
+1. Deploy from GitHub; Railway auto-detects Node.js.
+2. Add the env vars from the table above to the service.
+3. Attach a persistent volume named `sessions` mounted at `/app/data/sessions` (configured in `railway.json`) so session files survive redeploys. Or set `DATABASE_URL` and let Postgres keep the memory.
+4. Verify: `GET /health` → `{"status":"ok"}`; send two `POST /chat` turns with the same `session_id` and confirm the second retains context after a redeploy.
+
+## Decision Ladder
+
+Every change follows this priority, in order:
+
+1. **YAGNI** — does this need to exist at all?
+2. **Standard library** — can built-ins do it?
+3. **Native runtime/platform**
+4. **Existing dependency**
+5. **One line**
+6. **Minimum new code** — nothing speculative
+
+## Roadmap
+
+- [ ] Smarter failover — latency-based picking, token-limit awareness
+- [ ] Real auth for the demo pages (backend pending)
+- [ ] Provider health metrics + failover analytics dashboard
+- [ ] SSE/streaming replies
 
 ## License
 

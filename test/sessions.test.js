@@ -75,6 +75,8 @@ test('lists persisted sessions and returns deterministic isolated nodes', async 
     model_used: 'model-b',
     status_at_this_point: 'done',
   });
+  // Ensure a strictly later timestamp: same-ms ties are sorted by id, not insertion order.
+  await new Promise((resolve) => setTimeout(resolve, 5));
   await memory.appendNode('session-b', {
     type: 'turn',
     content: 'other session',

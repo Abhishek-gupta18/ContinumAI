@@ -101,6 +101,9 @@ function createApp(options = {}) {
   app.use(express.json());
 
   app.post("/chat", createChatHandler(providers, memory, { providerTimeoutMs }));
+  app.get("/providers", requireAuth, (req, res) => {
+    res.status(200).json({ providers: providers.map((p) => p.name) });
+  });
   app.get("/sessions", sessionsRouter.listSessions);
   app.get("/sessions/:id/nodes", sessionsRouter.getSessionNodes);
 

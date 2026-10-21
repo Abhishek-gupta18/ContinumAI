@@ -9,13 +9,13 @@ export interface MemoryNode {
   prev_id: string | null;
   type: MemoryNodeType;
   content: string;
-  reply?: string | null;
+  reply: string | null;
   model_used: ModelUsed;
   status_at_this_point: NodeStatus;
   timestamp: string;
   references?: string[] | null;
-  provider?: string | null;
-  failed_providers?: string[];
+  provider: string | null;
+  failed_providers: string[];
 }
 
 export interface SessionSummary {

@@ -6,8 +6,8 @@ import {
   ColonySimLink,
   buildColonyGraph,
   COLONY_COLORS,
-  providerLabel,
 } from '../utils/colonyPhysics';
+import { providerLabel } from './nodes/Badges';
 import {
   Play,
   Pause,
@@ -241,7 +241,7 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
 
       const isNodeVisible = (n: ColonySimNode) => {
         if (modelFilter !== 'all') {
-          const { colorKey } = providerLabel(n.model, n.provider);
+          const { colorKey } = providerLabel(n.node);
           if (colorKey !== modelFilter) return false;
         }
         if (typeFilter !== 'all' && n.type !== typeFilter) return false;

@@ -1,19 +1,19 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
-/* Obsidian Dark Theme Baseline */
+/* ContinumAI Theme Baseline (refreshed surfaces) */
 :root {
   color-scheme: dark;
-  --bg-main: #101013;
-  --bg-sidebar: #141417;
-  --bg-card: #17171c;
-  --border-color: #24242c;
+  --bg-main: #121218;
+  --bg-sidebar: #16161d;
+  --bg-card: #1b1b23;
+  --border-color: #272733;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #101013;
+  background-color: #121218;
   color: #dcddde;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   overflow: hidden;
@@ -27,7 +27,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #141417;
+  background: #16161d;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -41,7 +41,7 @@ body {
 
 /* React Flow Dark Theme Customization */
 .react-flow__controls {
-  background-color: #17171d !important;
+  background-color: #1b1b23 !important;
   border: 1px solid #282834 !important;
   border-radius: 8px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
@@ -49,7 +49,7 @@ body {
 }
 
 .react-flow__controls-button {
-  background-color: #17171d !important;
+  background-color: #1b1b23 !important;
   border-bottom: 1px solid #24242e !important;
   color: #9b9cae !important;
   fill: #9b9cae !important;

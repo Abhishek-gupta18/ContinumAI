@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Loader2, RefreshCw, Send } from 'lucide-react';
-import { ApiError, getSessionNodes, getSessions, sendChat } from './api/client';
+import { ApiError, getProviders, getSessionNodes, getSessions, sendChat } from './api/client';
 import { MemoryNode, Session } from './types';
 import { SessionSidebar } from './components/SessionSidebar';
 import { GraphView } from './components/GraphView';
@@ -38,6 +38,22 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatReply, setChatReply] = useState<string | null>(null);
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  const [preferredProvider, setPreferredProvider] = useState(''); // '' = auto (chain order)
+
+  useEffect(() => {
+    let cancelled = false;
+    getProviders()
+      .then((resp) => {
+        if (!cancelled) setAvailableProviders(resp.providers);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadSessions = async (preferredSessionId?: string | null) => {
     setSessionsLoading(true);
@@ -134,7 +150,7 @@ export default function App() {
     setChatError(null);
     setChatReply(null);
     try {
-      const response = await sendChat(selectedSessionId, message.trim());
+      const response = await sendChat(selectedSessionId, message.trim(), preferredProvider || undefined);
       setMessage('');
       setChatReply(`${response.reply} (${response.model_used})`);
       await loadSessions(selectedSessionId);
@@ -157,7 +173,7 @@ export default function App() {
   return (
     <div
       id="continum-ai-app"
-      className="w-screen h-screen flex bg-[#101013] text-[#dcdde7] font-sans antialiased overflow-hidden"
+      className="w-screen h-screen flex bg-[#121218] text-[#dcdde7] font-sans antialiased overflow-hidden"
     >
       {/* 1. Left Sidebar: Sessions / Tasks */}
       <SessionSidebar
@@ -169,7 +185,7 @@ export default function App() {
       />
 
       {/* 2. Center Panel: Memory Graph View */}
-      <main className="flex-1 h-full min-w-0 flex flex-col relative overflow-hidden bg-[#101013]">
+      <main className="flex-1 h-full min-w-0 flex flex-col relative overflow-hidden bg-[#121218]">
         {sessionsLoading ? (
           <StatusMessage message="Loading persisted sessions..." loading />
         ) : sessionsError ? (
@@ -204,6 +220,20 @@ export default function App() {
               disabled={chatLoading}
               className="min-w-0 flex-1 bg-transparent px-2 text-sm text-[#e2e2ec] placeholder-[#68697c] focus:outline-none"
             />
+            <select
+              id="chat-provider-select"
+              value={preferredProvider}
+              onChange={(event) => setPreferredProvider(event.target.value)}
+              title="Provider chosen from your configured API keys; failover still applies"
+              className="max-w-[9rem] shrink-0 rounded-lg border border-[#2d2d3c] bg-[#1b1b23] px-2 py-1.5 text-xs text-[#c6c7d5] focus:outline-none focus:border-indigo-500/60"
+            >
+              <option value="">Auto</option>
+              {availableProviders.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
             <button
               id="chat-submit-btn"
               type="submit"

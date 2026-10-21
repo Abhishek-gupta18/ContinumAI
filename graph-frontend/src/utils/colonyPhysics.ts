@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { MemoryNode, MemoryNodeType, ModelUsed, NodeStatus } from '../types';
+import { providerLabel } from '../components/nodes/Badges';
 
 export interface ColonySimNode extends d3.SimulationNodeDatum {
   id: string;
@@ -36,53 +37,27 @@ export interface ColonySimLink extends d3.SimulationLinkDatum<ColonySimNode> {
   distance?: number;
 }
 
-// Provider label helper (same logic as in Badges.tsx)
-export function providerLabel(model: ModelUsed, provider: string | null): { display: string; colorKey: 'openai' | 'gemini' | 'claude' | 'unknown' } {
-  if (provider) {
-    const p = provider.toLowerCase();
-    if (p.includes('openai') || p.includes('gpt') || p.includes('o1') || p.includes('o3')) {
-      return { display: 'OpenAI', colorKey: 'openai' };
-    }
-    if (p.includes('gemini')) {
-      return { display: 'Gemini', colorKey: 'gemini' };
-    }
-    if (p.includes('claude') || p.includes('anthropic')) {
-      return { display: 'Claude', colorKey: 'claude' };
-    }
-    return { display: provider, colorKey: 'unknown' };
-  }
-  const m = model.toLowerCase();
-  if (m.includes('gpt') || m.includes('o1') || m.includes('o3')) {
-    return { display: 'OpenAI', colorKey: 'openai' };
-  }
-  if (m.includes('gemini')) {
-    return { display: 'Gemini', colorKey: 'gemini' };
-  }
-  if (m.includes('claude')) {
-    return { display: 'Claude', colorKey: 'claude' };
-  }
-  return { display: 'Unknown', colorKey: 'unknown' };
-}
+// Provider labeling lives in components/nodes/Badges.tsx (single implementation)
 
-// Color Palette matched to Obsidian graph and user's reference images
+// Provider colors: light/bright variants, shared with the badges (colorKey mapping in Badges.tsx)
 export const COLONY_COLORS = {
   checkpoint: '#ec4899', // Radiant Magenta / Pink
   checkpointGlow: 'rgba(236, 72, 153, 0.45)',
-  
+
   decision: '#8b5cf6', // Vivid Purple
   decisionGlow: 'rgba(139, 92, 246, 0.4)',
 
-  openaiTurn: '#10b981', // Crisp Emerald / Mint
-  openaiGlow: 'rgba(16, 185, 129, 0.35)',
+  openaiTurn: '#34d399', // Light emerald
+  openaiGlow: 'rgba(52, 211, 153, 0.4)',
 
-  geminiTurn: '#06b6d4', // Cyan for Gemini
-  geminiGlow: 'rgba(6, 182, 212, 0.35)',
+  geminiTurn: '#22d3ee', // Light cyan
+  geminiGlow: 'rgba(34, 211, 238, 0.4)',
 
-  claudeTurn: '#f59e0b', // Warm Amber / Coral
-  claudeGlow: 'rgba(245, 158, 11, 0.35)',
+  claudeTurn: '#fbbf24', // Light amber
+  claudeGlow: 'rgba(251, 191, 36, 0.4)',
 
-  unknownTurn: '#6b7280', // Neutral gray
-  unknownGlow: 'rgba(107, 114, 128, 0.35)',
+  unknownTurn: '#94a3b8', // Light neutral gray
+  unknownGlow: 'rgba(148, 163, 184, 0.35)',
 
   blocked: '#f43f5e', // Rose
   inProgressGlow: 'rgba(56, 189, 248, 0.6)',
@@ -104,14 +79,14 @@ export function getNodeRadius(type: MemoryNodeType): number {
   }
 }
 
-function getNodeColors(type: MemoryNodeType, model: ModelUsed, provider: string | null): { color: string; glow: string } {
-  if (type === 'checkpoint') {
+function getNodeColors(node: MemoryNode): { color: string; glow: string } {
+  if (node.type === 'checkpoint') {
     return { color: COLONY_COLORS.checkpoint, glow: COLONY_COLORS.checkpointGlow };
   }
-  if (type === 'decision') {
+  if (node.type === 'decision') {
     return { color: COLONY_COLORS.decision, glow: COLONY_COLORS.decisionGlow };
   }
-  const { colorKey } = providerLabel(model, provider);
+  const { colorKey } = providerLabel(node);
   switch (colorKey) {
     case 'openai':
       return { color: COLONY_COLORS.openaiTurn, glow: COLONY_COLORS.openaiGlow };
@@ -184,7 +159,7 @@ export function buildColonyGraph(memoryNodes: MemoryNode[]): {
   const simNodes: ColonySimNode[] = memoryNodes.map((node, idx) => {
     const clusterInfo = clusterMap.get(node.node_id) || { clusterId: defaultClusterId, depth: 1 };
     const radius = getNodeRadius(node.type);
-    const { color, glow } = getNodeColors(node.type, node.model_used, node.provider);
+    const { color, glow } = getNodeColors(node);
 
     // Initial position: arrange loosely around their cluster center
     const clusterIdx = clusterCenters.indexOf(clusterInfo.clusterId);

@@ -6,6 +6,16 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, process.cwd(), '');
   const gatewayToken = env.GATEWAY_API_TOKEN || '';
+
+  const withGatewayAuth = (proxy: any) => {
+    proxy.on('proxyReq', (proxyReq: any) => {
+      proxyReq.removeHeader('origin');
+      if (gatewayToken) {
+        proxyReq.setHeader('Authorization', `Bearer ${gatewayToken}`);
+      }
+    });
+  };
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -17,39 +27,9 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       proxy: {
-        '/sessions': {
-          target: 'http://127.0.0.1:3000',
-          changeOrigin: false,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              if (gatewayToken) {
-                proxyReq.setHeader('Authorization', `Bearer ${gatewayToken}`);
-              }
-            });
-          },
-        },
-        '/chat': {
-          target: 'http://127.0.0.1:3000',
-          changeOrigin: false,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              if (gatewayToken) {
-                proxyReq.setHeader('Authorization', `Bearer ${gatewayToken}`);
-              }
-            });
-          },
-        },
-        '/health': {
-          target: 'http://127.0.0.1:3000',
-          changeOrigin: false,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              if (gatewayToken) {
-                proxyReq.setHeader('Authorization', `Bearer ${gatewayToken}`);
-              }
-            });
-          },
-        },
+        '/sessions': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
+        '/chat': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
+        '/health': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
       },
     },
   };
