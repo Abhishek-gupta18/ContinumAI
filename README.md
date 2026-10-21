@@ -25,6 +25,10 @@ Send a message to `POST /chat` and ContinumAI:
 
 A React front-end (colony-style graph canvas) visualizes the whole chain — providers, failovers, branches, checkpoints.
 
+<p align="center">
+  <img src="docs/screenshots/landing.png" alt="ContinumAI landing page — One memory chain. Many models." width="75%" />
+</p>
+
 ## Architecture
 
 ```
@@ -187,13 +191,28 @@ continumai/
 ## Frontend
 
 Landing page → **Open Workspace** → the memory-graph workspace:
-
 - **Colony canvas** — d3-force particle graph clustered around checkpoints; node color = answering provider; `decision` nodes branch, dashed edges are references.
 - **Node inspector** — prompt/reply, provider badge (OpenAI / Gemini / Claude / unknown), failover banner (`"A > B failed, C answered"` — wording only appears when `failed_providers` is non-empty), lineage jumping.
 - **Session sidebar** — persisted session list with filter, fork/count stats.
 - **Demo pages** (Sign in, Provider keys, Gateway tokens, Account) are clearly labelled **"Demo, not saved"** — no backend exists for them; typed keys are never stored anywhere.
 
 Routes are hash-based: `#/` landing, `#/app` workspace, `#/demo/*` demo pages.
+
+### Workspace — successful turn
+
+The node inspector shows who answered (`provider` badge), the chain lineage, and the full prompt/reply payload.
+
+<p align="center">
+  <img src="docs/screenshots/workspace-turn.png" alt="Workspace with a completed Gemini turn: colony canvas, node inspector showing provider Gemini, status Done, prompt and reply" width="95%" />
+</p>
+
+### Workspace — failover and blocked turn
+
+When providers fail, the stored node keeps the trail: the failover banner (`openai > gemini > claude failed (3 tried)`) and `failed_providers` on the node itself.
+
+<p align="center">
+  <img src="docs/screenshots/workspace-blocked.png" alt="Workspace with a blocked turn: failover banner listing failed providers, No Provider Answered alert, status Blocked" width="95%" />
+</p>
 
 ## Deployment (Railway)
 
