@@ -125,6 +125,14 @@ function createApp(options = {}) {
 }
 
 if (require.main === module) {
+  if (
+    process.env.REQUIRE_DATABASE === 'true' &&
+    !(typeof process.env.DATABASE_URL === 'string' && process.env.DATABASE_URL.length > 0)
+  ) {
+    console.error('REQUIRE_DATABASE=true but DATABASE_URL is empty. Set DATABASE_URL (or unset REQUIRE_DATABASE) and start again.');
+    process.exit(1);
+  }
+
   const hasToken = typeof process.env.GATEWAY_API_TOKEN === 'string' && process.env.GATEWAY_API_TOKEN.length > 0;
   const allowUnauth = process.env.ALLOW_UNAUTHENTICATED === 'true';
   if (!hasToken && !allowUnauth) {

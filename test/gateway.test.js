@@ -1136,3 +1136,314 @@ test('preferred provider is tried first, failover still available; unknown provi
   assert.strictEqual(turns[0].provider, 'stub-b');
   assert.deepStrictEqual(turns[0].failed_providers, []);
 });
+
+// ---- E-series: request deadline (REQUEST_DEADLINE_MS) ----
+
+function useDeadlineMs(t, ms) {
+  const previous = process.env.REQUEST_DEADLINE_MS;
+  process.env.REQUEST_DEADLINE_MS = String(ms);
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.REQUEST_DEADLINE_MS;
+    } else {
+      process.env.REQUEST_DEADLINE_MS = previous;
+    }
+  });
+}
+
+test('E1: getRequestDeadlineMs returns 60000 for unset/empty/0/abc; returns 300 for 300', () => {
+  const { getRequestDeadlineMs } = require('../providers/timeout');
+
+  const original = process.env.REQUEST_DEADLINE_MS;
+  const run = (value) => {
+    if (value === undefined) delete process.env.REQUEST_DEADLINE_MS;
+    else process.env.REQUEST_DEADLINE_MS = value;
+    return getRequestDeadlineMs();
+  };
+  try {
+    assert.strictEqual(run(undefined), 60000, 'unset -> 60000');
+    assert.strictEqual(run(''), 60000, "'' -> 60000");
+    assert.strictEqual(run('0'), 60000, "'0' -> 60000");
+    assert.strictEqual(run('abc'), 60000, "'abc' -> 60000");
+    assert.strictEqual(run('300'), 300, "'300' -> 300");
+  } finally {
+    if (original === undefined) delete process.env.REQUEST_DEADLINE_MS;
+    else process.env.REQUEST_DEADLINE_MS = original;
+  }
+});
+
+test('E2: hanging providers, providerTimeoutMs 200, deadline 300 -> 504 "request deadline exceeded" in under 1s; exactly 2 of 3 providers attempted', async (t) => {
+  useTempSessionsDir(t);
+  useDeadlineMs(t, 300);
+
+  const attempts = [];
+  const providers = ['h1', 'h2', 'h3'].map((name) => ({
+    name,
+    send: async () => {
+      attempts.push(name);
+      await new Promise(() => {}); // never settles
+    },
+  }));
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 200 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  const start = Date.now();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'e2-deadline', message: 'hello' }),
+  });
+  const elapsed = Date.now() - start;
+
+  assert.strictEqual(res.status, 504, `expected 504, got ${res.status}`);
+  const body = await res.json();
+  assert.ok(body.error.message.includes('request deadline exceeded'), `error message must mention deadline: ${JSON.stringify(body.error)}`);
+
+  // Attempt rhythm: h1 gets 200 ms, h2 gets min(200, ~100 left) ms, then the
+  // budget is spent so h3 must never be attempted.
+  assert.deepStrictEqual(attempts, ['h1', 'h2'], `exactly h1, h2 attempted; got ${JSON.stringify(attempts)}`);
+  assert.strictEqual(body.error.type, 'timeout');
+
+  // Blocked node stored as today, failed_providers lists only attempted providers.
+  const turns = await readSavedTurns('e2-deadline');
+  assert.strictEqual(turns.length, 1);
+  assert.strictEqual(turns[0].status_at_this_point, 'blocked');
+  assert.strictEqual(turns[0].provider, null);
+  assert.strictEqual(turns[0].reply, null);
+  assert.deepStrictEqual(turns[0].failed_providers, ['h1', 'h2']);
+
+  assert.ok(elapsed < 1000, `must finish in under 1s, took ${elapsed}ms`);
+}, { timeout: 5000 });
+
+test('E3: fast-failing first provider still fails over normally under a tight deadline', async (t) => {
+  useTempSessionsDir(t);
+  useDeadlineMs(t, 300);
+
+  const calls = [];
+  const providers = [
+    { name: 'fast-fail', send: async () => { calls.push('fast-fail'); return makeError('rate_limit_error', 'rate limited', 429); } },
+    { name: 'fast-backup', send: async () => { calls.push('fast-backup'); return makeSuccess('backup reply', 'backup-model'); } },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 200 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  const start = Date.now();
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'e3-fastfail', message: 'hello' }),
+  });
+
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'backup reply');
+  assert.deepStrictEqual(calls, ['fast-fail', 'fast-backup']);
+  const turns = await readSavedTurns('e3-fastfail');
+  assert.deepStrictEqual(turns[0].failed_providers, ['fast-fail']);
+  assert.strictEqual(turns[0].provider, 'fast-backup');
+}, { timeout: 5000 });
+
+test('E4: late-settling provider under the deadline causes no unhandled rejection, single response, one memory node', async (t) => {
+  useTempSessionsDir(t);
+  useDeadlineMs(t, 1000);
+
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  const onUnhandled = (err) => unhandledRejections.push(err);
+  const unhandledRejections = [];
+  process.on('uncaughtException', onUncaught);
+  process.on('unhandledRejection', onUnhandled);
+  t.after(() => {
+    process.off('uncaughtException', onUncaught);
+    process.off('unhandledRejection', onUnhandled);
+  });
+
+  const providers = [
+    { name: 'late', send: async () => { await new Promise((r) => setTimeout(r, 400)); return makeSuccess('late reply', 'late-model'); } },
+    { name: 'backup', send: async () => makeSuccess('backup reply', 'backup-model') },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null, providerTimeoutMs: 200 });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'e4-late', message: 'hello' }),
+  });
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'backup reply');
+
+  // Give the late settlement + timer cleanup a beat to (not) blow up.
+  await new Promise((r) => setTimeout(r, 500));
+  assert.strictEqual(unhandledRejections.length, 0, `no unhandled rejections: ${JSON.stringify(unhandledRejections)}`);
+  assert.strictEqual(uncaught.length, 0, `no uncaught exceptions: ${JSON.stringify(uncaught)}`);
+
+  const turns = await readSavedTurns('e4-late');
+  assert.strictEqual(turns.length, 1, 'exactly one turn node stored');
+  assert.strictEqual(turns[0].provider, 'backup');
+}, { timeout: 5000 });
+
+// ---- F-series: REQUIRE_DATABASE startup guard + provider field hardening ----
+
+test('F1: REQUIRE_DATABASE=true with empty DATABASE_URL -> clear error and exit(1) before listening', () => {
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'continumai-reqdb-'));
+  const projectRoot = path.join(__dirname, '..');
+  try {
+    const result = require('node:child_process').spawnSync(
+      process.execPath,
+      [path.join(projectRoot, 'server.js')],
+      {
+        cwd: emptyDir,
+        env: {
+          PATH: process.env.PATH,
+          SystemRoot: process.env.SystemRoot,
+          GATEWAY_API_TOKEN: 'test-token',
+          ALLOW_UNAUTHENTICATED: 'true',
+          REQUIRE_DATABASE: 'true',
+          // No DATABASE_URL
+        },
+        encoding: 'utf8',
+        timeout: 5000,
+      }
+    );
+    assert.notStrictEqual(result.status, 0, 'process must exit non-zero');
+    const output = result.stdout + result.stderr;
+    assert.ok(output.includes('DATABASE_URL'), `must name DATABASE_URL in the error: ${JSON.stringify(output)}`);
+    assert.ok(!output.includes('running on port'), 'must not print listening message');
+  } finally {
+    fs.rmSync(emptyDir, { recursive: true, force: true });
+  }
+});
+
+test('F2: provider non-string body -> 400', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [{ name: 'stub-a', send: async () => makeSuccess('r', 'm') }];
+  const server = await startServer(t, providers);
+  const { port } = server.address();
+
+  for (const bad of [123, { name: 'x' }, ['a'], true]) {
+    const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: 'f2-provider', message: 'hello', provider: bad }),
+    });
+    assert.strictEqual(res.status, 400, `provider=${JSON.stringify(bad)} must be 400`);
+    const body = await res.json();
+    assert.strictEqual(body.error.type, 'validation');
+    assert.ok(body.error.message.includes('must be a string'), `non-string provider message must be specific: ${JSON.stringify(body.error.message)}`);
+  }
+
+  const turns = await readSavedTurns('f2-provider');
+  assert.strictEqual(turns.length, 0, 'provider must not be called for invalid bodies');
+});
+
+test('F3: client-supplied URL/model fields ignored, provider still serves normally', async (t) => {
+  useTempSessionsDir(t);
+
+  const captures = [];
+  const providers = [
+    {
+      name: 'stub-a',
+      send: async (req) => {
+        captures.push(Object.keys(req));
+        return makeSuccess('reply', 'stub-model');
+      },
+    },
+  ];
+  const server = await startServer(t, providers);
+  const { port } = server.address();
+
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: 'f3-extra',
+      message: 'hello',
+      url: 'http://evil.example.com/v1',
+      model: 'gpt-9-turbo',
+      apiKey: 'sk-client-supplied-evil',
+      baseURL: 'http://evil.example.com',
+    }),
+  });
+
+  assert.strictEqual(res.status, 200, 'extra client fields must not break the request');
+  const body = await res.json();
+  assert.strictEqual(body.reply, 'reply');
+  assert.strictEqual(body.model_used, 'stub-model', 'model_used comes from the provider, not the client');
+
+  // The provider was called once with the canonical fields plus the prompt;
+  // client junk rides along but nothing downstream reads it (adapters
+  // destructure only session_id/message) and nothing is echoed back.
+  const json = JSON.stringify(body);
+  assert.ok(!json.includes('evil'), 'response must not echo client-supplied fields');
+  assert.strictEqual(captures.length, 1, 'provider called exactly once');
+  assert.ok(captures[0].includes('message') && captures[0].includes('session_id'), 'call includes canonical fields');
+  const turns = await readSavedTurns('f3-extra');
+  assert.strictEqual(turns[0].provider, 'stub-a');
+  assert.deepStrictEqual(turns[0].failed_providers, []);
+});
+
+test('F4: GET /providers requires the Bearer token', async (t) => {
+  const providers = [{ name: 'stub-a', send: async () => makeSuccess('r', 'm') }];
+  const app = require('../server').createApp({ providers, apiToken: 'secret-token-123' });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  const noAuth = await fetch(`http://127.0.0.1:${port}/providers`);
+  assert.strictEqual(noAuth.status, 401, 'missing token -> 401');
+
+  const badAuth = await fetch(`http://127.0.0.1:${port}/providers`, {
+    headers: { Authorization: 'Bearer wrong-token' },
+  });
+  assert.strictEqual(badAuth.status, 401, 'wrong token -> 401');
+
+  const good = await fetch(`http://127.0.0.1:${port}/providers`, {
+    headers: { Authorization: 'Bearer secret-token-123' },
+  });
+  assert.strictEqual(good.status, 200, 'correct token -> 200');
+});
+
+test('F5: GET /providers returns names/status only — no secrets, keys, or URLs', async (t) => {
+  const providers = [
+    { name: 'stub-a', send: async () => makeSuccess('r', 'm') },
+    { name: 'stub-b', send: async () => makeSuccess('r', 'm') },
+  ];
+  const app = require('../server').createApp({ providers, apiToken: null });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  const res = await fetch(`http://127.0.0.1:${port}/providers`);
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+
+  // Shape: a providers array of names only.
+  assert.deepStrictEqual(Object.keys(body), ['providers']);
+  assert.deepStrictEqual(body.providers, ['stub-a', 'stub-b']);
+  for (const p of body.providers) {
+    assert.strictEqual(typeof p, 'string', 'each entry must be a plain provider name');
+  }
+
+  // No secrets: response must not contain provider internals (send function
+  // fields get stripped by JSON, and configured env keys never surface).
+  const json = JSON.stringify(body);
+  assert.ok(!/http:\/\/|https:\/\//.test(json), 'no URLs in /providers response');
+  assert.ok(!json.includes('sk-'), 'no keys in /providers response');
+});

@@ -7,7 +7,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=nodedotjs&logoColor=white)](package.json)
 [![Express](https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white)](package.json)
 [![React + Vite](https://img.shields.io/badge/frontend-react%20%2B%20vite-61DAFB?logo=react&logoColor=black)](graph-frontend)
-[![Tests](https://img.shields.io/badge/tests-76%20passing-4c1)](package.json)
+[![Tests](https://img.shields.io/badge/tests-87%20passing-4c1)](package.json)
 [![License](https://img.shields.io/badge/license-ISC-blue)](#license)
 
 </div>
@@ -89,7 +89,7 @@ The server refuses to start when `GATEWAY_API_TOKEN` is missing unless `ALLOW_UN
 ```bash
 cd graph-frontend
 npm install
-npm run dev             # http://localhost:5173 — proxies /chat, /sessions, /health to :3000
+npm run dev             # http://localhost:5173 — proxies /chat, /sessions, /health, /providers to :3000
 ```
 
 The Vite dev proxy strips the browser `Origin` header and injects the gateway token (`GATEWAY_API_TOKEN` in `graph-frontend/.env`), so the backend's fail-closed CORS accepts it.
@@ -97,7 +97,7 @@ The Vite dev proxy strips the browser `Origin` header and injects the gateway to
 ### Tests
 
 ```bash
-npm test    # 76 tests — stub providers only, never calls real APIs
+npm test    # 87 tests — stub providers only, never calls real APIs
 ```
 
 Set `TEST_DATABASE_URL` to also run the Postgres memory contract suite against a throwaway schema (auto-dropped).
@@ -218,7 +218,7 @@ When providers fail, the stored node keeps the trail: the failover banner (`open
 
 1. Deploy from GitHub; Railway auto-detects Node.js.
 2. Add the env vars from the table above to the service.
-3. Attach a persistent volume named `sessions` mounted at `/app/data/sessions` (configured in `railway.json`) so session files survive redeploys. Or set `DATABASE_URL` and let Postgres keep the memory.
+3. Set `DATABASE_URL` so the memory survives redeploys; file-only storage keeps sessions on an ephemeral disk.
 4. Verify: `GET /health` → `{"status":"ok"}`; send two `POST /chat` turns with the same `session_id` and confirm the second retains context after a redeploy.
 
 ## Decision Ladder

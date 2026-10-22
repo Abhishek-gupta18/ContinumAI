@@ -30,6 +30,7 @@ export default defineConfig(({mode}) => {
         '/sessions': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
         '/chat': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
         '/health': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
+        '/providers': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
       },
     },
   };

@@ -18,6 +18,7 @@ import {
   CornerDownRight,
   Maximize2,
   AlertTriangle,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DetailPanelProps {
@@ -86,6 +87,9 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
 
   const handoffInfo = (() => {
     if (!selectedNode) return null;
+    // Blocked nodes are covered by the "No Provider Answered" banner,
+    // and failover/handoff only makes sense when a provider actually answered.
+    if (selectedNode.status_at_this_point === 'blocked' || selectedNode.provider === null) return null;
     // If failed_providers exist, show failover callout
     if (selectedNode.failed_providers && selectedNode.failed_providers.length > 0) {
       const { display: providerDisplay } = providerLabel(selectedNode);
@@ -187,7 +191,17 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               <span className="text-[11px] font-medium text-[#7d7e92] uppercase tracking-wider">
                 Model Provider
               </span>
-              <ModelBadge model={selectedNode.model_used} provider={selectedNode.provider} failed_providers={selectedNode.failed_providers} size="md" />
+              {selectedNode.provider === null && selectedNode.status_at_this_point === 'blocked' ? (
+                <span
+                  id="model-badge-none-md"
+                  className="inline-flex items-center gap-1 font-mono font-medium rounded-md uppercase tracking-wider px-2 py-0.5 text-xs bg-slate-500/15 text-slate-300 border border-slate-400/40 shadow-xs"
+                >
+                  <HelpCircle className="w-3 h-3 text-slate-300" />
+                  <span>None</span>
+                </span>
+              ) : (
+                <ModelBadge model={selectedNode.model_used} provider={selectedNode.provider} failed_providers={selectedNode.failed_providers} size="md" />
+              )}
             </div>
 
             <div className="flex items-center justify-between">

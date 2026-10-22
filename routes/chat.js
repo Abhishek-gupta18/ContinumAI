@@ -1,6 +1,6 @@
 const { buildProviders } = require("../providers");
 const defaultMemory = require("../memory/store");
-const { getProviderTimeoutMs } = require("../providers/timeout");
+const { getProviderTimeoutMs, getRequestDeadlineMs } = require("../providers/timeout");
 
 function callProvider(provider, request, timeoutMs) {
   let timer;
@@ -40,6 +40,7 @@ function callProvider(provider, request, timeoutMs) {
 
 function createChatHandler(providers = buildProviders(), memory = defaultMemory, options = {}) {
   const providerTimeoutMs = options.providerTimeoutMs ?? getProviderTimeoutMs();
+  const requestDeadlineMs = options.requestDeadlineMs ?? getRequestDeadlineMs();
   return async function handleChatRequest(req, res) {
     const normalizedRequest = req.body;
 
@@ -124,10 +125,42 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
 
     let lastError = null;
     let lastProvider = null;
+    let deadlineSpent = false;
     const failedProviders = [];
 
+    const recordBlocked = async (resHdr) => {
+      try {
+        await memory.appendNode(session_id, {
+          type: "turn",
+          content: message,
+          reply: null,
+          model_used: "unknown",
+          status_at_this_point: "blocked",
+          provider: null,
+          failed_providers: failedProviders,
+        });
+      } catch (err) {
+        console.error(`[memory] appendNode failed: ${err.message} ${err.code ?? ''}`);
+        resHdr.setHeader('X-Memory-Saved', 'false');
+      }
+    };
+
+    // Wall-clock budget for this request shared across the provider chain:
+    // each call gets min(providerTimeoutMs, remaining budget); once the budget
+    // is spent we stop trying providers and return 504.
+    const deadlineBeginsAt = Date.now();
+
     for (const provider of chain) {
-      const result = await callProvider(provider, currentRequest, providerTimeoutMs);
+      const remainingMs = requestDeadlineMs - (Date.now() - deadlineBeginsAt);
+      if (remainingMs <= 0) {
+        console.error(
+          `[gateway] Request ${session_id}: request deadline (${requestDeadlineMs} ms) exceeded after ${failedProviders.length} provider attempt(s) — skipping remaining providers`
+        );
+        deadlineSpent = true;
+        break;
+      }
+
+      const result = await callProvider(provider, currentRequest, Math.min(providerTimeoutMs, remainingMs));
 
       if (result.success) {
         console.log(
@@ -166,24 +199,21 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
       }
     }
 
+    await recordBlocked(res);
+
+    if (deadlineSpent) {
+      // Budget exhausted: stop, report the deadline, not the last provider error.
+      return res.status(504).json({
+        error: {
+          type: "timeout",
+          message: "request deadline exceeded",
+        },
+      });
+    }
+
     console.error(
       `[gateway] Request ${session_id} failed on all providers. Last error from ${lastProvider}: ${lastError && lastError.message}`
     );
-    try {
-      await memory.appendNode(session_id, {
-        type: "turn",
-        content: message,
-        reply: null,
-        model_used: "unknown",
-        status_at_this_point: "blocked",
-        provider: null,
-        failed_providers: failedProviders,
-      });
-    } catch (err) {
-      console.error('[memory] appendNode failed after all providers failed:', err.message, err.code ?? '');
-      res.setHeader('X-Memory-Saved', 'false');
-    }
-
     const statusCode = (lastError && lastError.statusCode) || 500;
     return res.status(statusCode).json({
       error: {
