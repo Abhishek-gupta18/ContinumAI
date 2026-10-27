@@ -121,7 +121,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
         ? `Conversation so far (earlier turns may have been answered by different assistants):\n${contextText}\n\nUser: ${message}`
         : message;
 
-    const currentRequest = { ...normalizedRequest, message: prompt };
+    const currentRequest = { session_id, message: prompt };
 
     let lastError = null;
     let lastProvider = null;
@@ -146,13 +146,15 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
     };
 
     // Wall-clock budget for this request shared across the provider chain:
-    // each call gets min(providerTimeoutMs, remaining budget); once the budget
-    // is spent we stop trying providers and return 504.
+    // each call gets min(providerTimeoutMs, remaining budget); when less than
+    // MIN_ATTEMPT_MS of budget remains (or none) we stop trying providers
+    // and return 504.
     const deadlineBeginsAt = Date.now();
+    const MIN_ATTEMPT_MS = 50;
 
     for (const provider of chain) {
       const remainingMs = requestDeadlineMs - (Date.now() - deadlineBeginsAt);
-      if (remainingMs <= 0) {
+      if (remainingMs < MIN_ATTEMPT_MS) {
         console.error(
           `[gateway] Request ${session_id}: request deadline (${requestDeadlineMs} ms) exceeded after ${failedProviders.length} provider attempt(s) — skipping remaining providers`
         );

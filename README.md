@@ -7,7 +7,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=nodedotjs&logoColor=white)](package.json)
 [![Express](https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white)](package.json)
 [![React + Vite](https://img.shields.io/badge/frontend-react%20%2B%20vite-61DAFB?logo=react&logoColor=black)](graph-frontend)
-[![Tests](https://img.shields.io/badge/tests-87%20passing-4c1)](package.json)
+[![Tests](https://img.shields.io/badge/tests-%E2%9C%93%20npm%20test-4c1)](package.json)
 [![License](https://img.shields.io/badge/license-ISC-blue)](#license)
 
 </div>
@@ -97,7 +97,7 @@ The Vite dev proxy strips the browser `Origin` header and injects the gateway to
 ### Tests
 
 ```bash
-npm test    # 87 tests — stub providers only, never calls real APIs
+npm test    # stub providers only, never calls real APIs
 ```
 
 Set `TEST_DATABASE_URL` to also run the Postgres memory contract suite against a throwaway schema (auto-dropped).

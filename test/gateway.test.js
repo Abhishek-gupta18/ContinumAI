@@ -1296,6 +1296,57 @@ test('E4: late-settling provider under the deadline causes no unhandled rejectio
   assert.strictEqual(turns[0].provider, 'backup');
 }, { timeout: 5000 });
 
+test('E5: provider rejecting after the deadline fired causes no unhandled rejection, single response, one memory node', async (t) => {
+  useTempSessionsDir(t);
+  useDeadlineMs(t, 100);
+
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  const onUnhandled = (err) => unhandledRejections.push(err);
+  const unhandledRejections = [];
+  process.on('uncaughtException', onUncaught);
+  process.on('unhandledRejection', onUnhandled);
+  t.after(() => {
+    process.off('uncaughtException', onUncaught);
+    process.off('unhandledRejection', onUnhandled);
+  });
+
+  const providers = [
+    {
+      name: 'late-reject',
+      send: async () => {
+        await new Promise((r) => setTimeout(r, 400));
+        throw new Error('late rejection');
+      },
+    },
+  ];
+
+  const app = require('../server').createApp({ providers, apiToken: null });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+
+  // Exactly one response: a single fetch that resolves once.
+  const res = await fetch(`http://127.0.0.1:${port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'e5-late-reject', message: 'hello' }),
+  });
+  assert.ok([502, 504].includes(res.status), `deadline must have fired first, got ${res.status}`);
+  await res.text(); // drain the body so the response is fully consumed
+
+  // Give the late rejection a beat to (not) blow up.
+  await new Promise((r) => setTimeout(r, 500));
+  assert.strictEqual(unhandledRejections.length, 0, `no unhandled rejections: ${JSON.stringify(unhandledRejections)}`);
+  assert.strictEqual(uncaught.length, 0, `no uncaught exceptions: ${JSON.stringify(uncaught)}`);
+
+  const turns = await readSavedTurns('e5-late-reject');
+  assert.strictEqual(turns.length, 1, 'exactly one memory node stored');
+  assert.strictEqual(turns[0].reply, null);
+  assert.strictEqual(turns[0].status_at_this_point, 'blocked');
+}, { timeout: 5000 });
+
 // ---- F-series: REQUIRE_DATABASE startup guard + provider field hardening ----
 
 test('F1: REQUIRE_DATABASE=true with empty DATABASE_URL -> clear error and exit(1) before listening', () => {
@@ -1383,13 +1434,21 @@ test('F3: client-supplied URL/model fields ignored, provider still serves normal
   assert.strictEqual(body.reply, 'reply');
   assert.strictEqual(body.model_used, 'stub-model', 'model_used comes from the provider, not the client');
 
-  // The provider was called once with the canonical fields plus the prompt;
-  // client junk rides along but nothing downstream reads it (adapters
-  // destructure only session_id/message) and nothing is echoed back.
+  // The provider was called once with EXACTLY { session_id, message: prompt }:
+  // no client junk (url/model/apiKey/baseURL/provider) may ride along.
   const json = JSON.stringify(body);
   assert.ok(!json.includes('evil'), 'response must not echo client-supplied fields');
   assert.strictEqual(captures.length, 1, 'provider called exactly once');
-  assert.ok(captures[0].includes('message') && captures[0].includes('session_id'), 'call includes canonical fields');
+  assert.deepStrictEqual(
+    captures[0],
+    ['session_id', 'message'],
+    'provider request must have exactly the keys session_id and message'
+  );
+  assert.deepStrictEqual(
+    Object.keys(body).sort(),
+    ['model_used', 'raw_provider_response', 'reply', 'session_id'],
+    `response must not echo client fields, got: ${Object.keys(body).join(', ')}`
+  );
   const turns = await readSavedTurns('f3-extra');
   assert.strictEqual(turns[0].provider, 'stub-a');
   assert.deepStrictEqual(turns[0].failed_providers, []);
