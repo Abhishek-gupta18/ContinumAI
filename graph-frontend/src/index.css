@@ -1,73 +1,92 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
-/* ContinumAI Theme Baseline (refreshed surfaces) */
 :root {
   color-scheme: dark;
-  --bg-main: #121218;
-  --bg-sidebar: #16161d;
-  --bg-card: #1b1b23;
-  --border-color: #272733;
+
+  /* Theme tokens */
+  --bg-base: #0B0D12;
+  --bg-panel: #12151C;
+  --bg-panel-elevated: #181C26;
+  --bg-panel-hover: #1E2330;
+  --border-subtle: #232733;
+  --border-strong: #323849;
+  
+  --accent-violet: #7C5CFF;
+  --accent-violet-hover: #6D4BF0;
+  --accent-violet-subtle: rgba(124, 92, 255, 0.12);
+
+  /* Status tokens */
+  --status-success: #10B981;
+  --status-warning: #F59E0B;
+  --status-error: #EF4444;
+
+  /* Provider identity colors */
+  --provider-openai: #10B981;
+  --provider-gemini: #3B82F6;
+  --provider-claude: #F97316;
+  --provider-nvidia: #84CC16;
+  --provider-custom: #8B5CF6;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #121218;
-  color: #dcddde;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  overflow: hidden;
+  background-color: var(--bg-base);
+  color: #F1F3F9;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Obsidian Scrollbar */
+.font-sans-ui {
+  font-family: var(--font-sans);
+}
+
+.font-mono-code {
+  font-family: var(--font-mono);
+}
+
+/* Custom scrollbar for sleek technical feel */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #16161d;
+  background: #0B0D12;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2b2b36;
+  background: #232733;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3c3d4c;
+  background: #323849;
 }
 
-/* React Flow Dark Theme Customization */
-.react-flow__controls {
-  background-color: #1b1b23 !important;
-  border: 1px solid #282834 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
-  overflow: hidden;
+/* Soft glow utilities */
+.glow-openai {
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
 }
 
-.react-flow__controls-button {
-  background-color: #1b1b23 !important;
-  border-bottom: 1px solid #24242e !important;
-  color: #9b9cae !important;
-  fill: #9b9cae !important;
-  width: 28px !important;
-  height: 28px !important;
+.glow-gemini {
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
 }
 
-.react-flow__controls-button:hover {
-  background-color: #22222b !important;
-  color: #f1f1f5 !important;
-  fill: #f1f1f5 !important;
+.glow-claude {
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.35);
 }
 
-.react-flow__controls-button svg {
-  fill: currentColor !important;
+.glow-nvidia {
+  box-shadow: 0 0 12px rgba(132, 204, 22, 0.35);
 }
 
-.react-flow__edge-text {
-  fill: #c084fc !important;
-  font-family: monospace;
+.glow-violet {
+  box-shadow: 0 0 14px rgba(124, 92, 255, 0.4);
 }

@@ -1,95 +1,49 @@
 import React from 'react';
-import { ModelUsed, NodeStatus, MemoryNode } from '../../types';
-import { Cpu, Sparkles, CheckCircle2, AlertCircle, Clock, HelpCircle } from 'lucide-react';
-
-export interface ProviderLabel {
-  display: string;
-  colorKey: 'openai' | 'gemini' | 'claude' | 'unknown';
-}
-
-export function providerLabel(node: MemoryNode): ProviderLabel {
-  const source = node.provider || node.model_used;
-  if (source) {
-    const s = source.toLowerCase();
-    if (s.startsWith('openai') || s.startsWith('gpt') || s.startsWith('o1-') || s.startsWith('o3-')) {
-      return { display: 'OpenAI', colorKey: 'openai' };
-    }
-    if (s.startsWith('gemini')) {
-      return { display: 'Gemini', colorKey: 'gemini' };
-    }
-    if (s.startsWith('claude') || s.startsWith('anthropic')) {
-      return { display: 'Claude', colorKey: 'claude' };
-    }
-    return { display: node.provider || 'Unknown', colorKey: 'unknown' };
-  }
-  return { display: 'Unknown', colorKey: 'unknown' };
-}
-
-// Light tint styles mapped from providerLabel's colorKey
-function providerLabelStyles(key: ProviderLabel['colorKey']) {
-  switch (key) {
-    case 'openai':
-      return {
-        bg: 'bg-emerald-500/15',
-        text: 'text-emerald-300',
-        border: 'border-emerald-400/40',
-        icon: Cpu,
-        iconColor: 'text-emerald-300',
-      };
-    case 'gemini':
-      return {
-        bg: 'bg-cyan-500/15',
-        text: 'text-cyan-300',
-        border: 'border-cyan-400/40',
-        icon: Sparkles,
-        iconColor: 'text-cyan-300',
-      };
-    case 'claude':
-      return {
-        bg: 'bg-amber-500/15',
-        text: 'text-amber-300',
-        border: 'border-amber-400/40',
-        icon: Sparkles,
-        iconColor: 'text-amber-300',
-      };
-    default:
-      return {
-        bg: 'bg-slate-500/15',
-        text: 'text-slate-300',
-        border: 'border-slate-400/40',
-        icon: HelpCircle,
-        iconColor: 'text-slate-300',
-      };
-  }
-}
+import { NodeStatus } from '../../types';
 
 interface ModelBadgeProps {
-  model: ModelUsed;
-  provider?: string | null;
-  failed_providers?: string[];
+  model: string;
   size?: 'sm' | 'md';
 }
 
-export const ModelBadge: React.FC<ModelBadgeProps> = ({
-  model,
-  provider,
-  failed_providers,
-  size = 'sm',
-}) => {
+export const ModelBadge: React.FC<ModelBadgeProps> = ({ model, size = 'sm' }) => {
   const isSm = size === 'sm';
-  const { display, colorKey } = providerLabel({ model_used: model, provider, failed_providers: failed_providers ?? [] } as MemoryNode);
-  const styles = providerLabelStyles(colorKey);
-  const Icon = styles.icon;
+  const m = (model || '').toLowerCase();
+
+  let label = model;
+  let dotColor = '#EEEAF7';
+  let glowClass = '';
+
+  if (m.includes('openai') || m.includes('gpt')) {
+    label = m.includes('4o') ? 'GPT-4o' : 'GPT';
+    dotColor = '#F0A35E';
+    glowClass = 'glow-gpt';
+  } else if (m.includes('claude') || m.includes('anthropic')) {
+    label = m.includes('sonnet') ? 'Claude 3.5' : 'Claude';
+    dotColor = '#E58AB0';
+    glowClass = 'glow-claude';
+  } else if (m.includes('gemini') || m.includes('google')) {
+    label = m.includes('1.5') ? 'Gemini 1.5' : 'Gemini';
+    dotColor = '#BFD4FF';
+    glowClass = 'glow-gemini';
+  } else if (m.includes('openrouter')) {
+    label = 'OpenRouter';
+    dotColor = '#9BE3C4';
+    glowClass = 'glow-openrouter';
+  }
 
   return (
     <span
       id={`model-badge-${model}-${size}`}
-      className={`inline-flex items-center gap-1 font-mono font-medium rounded-md uppercase tracking-wider ${
-        isSm ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs'
-      } ${styles.bg} ${styles.text} border ${styles.border} shadow-xs`}
+      className={`inline-flex items-center gap-1.5 font-mono-code font-medium rounded-full border border-[#2A2455] bg-[#14122B] text-[#EEEAF7] ${
+        isSm ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs'
+      }`}
     >
-      <Icon className={`${isSm ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${styles.iconColor}`} />
-      <span>{display}</span>
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${glowClass}`}
+        style={{ backgroundColor: dotColor }}
+      />
+      <span>{label}</span>
     </span>
   );
 };
@@ -105,34 +59,36 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'sm' })
   const config = {
     done: {
       label: 'Done',
-      icon: CheckCircle2,
-      style: 'bg-emerald-500/15 text-emerald-300/90 border-emerald-400/40',
-      iconColor: 'text-emerald-300',
+      dotColor: '#BFD4FF',
+      glow: 'glow-gemini',
     },
     in_progress: {
-      label: 'In Progress',
-      icon: Clock,
-      style: 'bg-sky-500/15 text-sky-300/90 border-sky-400/40',
-      iconColor: 'text-sky-300',
+      label: 'Running',
+      dotColor: '#F0A35E',
+      glow: 'glow-gpt',
     },
     blocked: {
       label: 'Blocked',
-      icon: AlertCircle,
-      style: 'bg-rose-500/15 text-rose-300/90 border-rose-400/40',
-      iconColor: 'text-rose-300',
+      dotColor: '#E58AB0',
+      glow: 'glow-claude',
     },
-  }[status];
-
-  const Icon = config.icon;
+  }[status] || {
+    label: status,
+    dotColor: '#9C98B8',
+    glow: '',
+  };
 
   return (
     <span
       id={`status-badge-${status}-${size}`}
-      className={`inline-flex items-center gap-1 rounded font-medium ${
-        isSm ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-xs'
-      } border ${config.style}`}
+      className={`inline-flex items-center gap-1.5 rounded-full font-medium border border-[#2A2455] bg-[#14122B] text-[#EEEAF7] ${
+        isSm ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs'
+      }`}
     >
-      <Icon className={`${isSm ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${config.iconColor}`} />
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${config.glow}`}
+        style={{ backgroundColor: config.dotColor }}
+      />
       <span>{config.label}</span>
     </span>
   );

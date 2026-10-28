@@ -1,12 +1,8 @@
-import { Session } from '../types';
-
-// Raw mock nodes omit the provider-band fields; they are added when exporting MOCK_SESSIONS.
-type MockNode = Omit<Session['nodes'][number], 'reply' | 'provider' | 'failed_providers'>;
-type MockSession = Omit<Session, 'nodes'> & { nodes: MockNode[] };
+import { Session, MemoryNode } from '../types';
 
 // Helper to generate dense colonies for stress testing and 100+ node visualization
-function generateLargeAutonomousSession(): MockSession {
-  const nodes: MockNode[] = [];
+function generateLargeAutonomousSession(): Session {
+  const nodes: MemoryNode[] = [];
   let idCounter = 0;
 
   // Colony 1: Distributed Root Architecture & Gateway Ingestion (25 nodes)
@@ -196,7 +192,7 @@ function generateLargeAutonomousSession(): MockSession {
   };
 }
 
-const RAW_MOCK_SESSIONS: MockSession[] = [
+export const MOCK_SESSIONS: Session[] = [
   generateLargeAutonomousSession(),
   {
     id: 'session-redis-failover',
@@ -468,16 +464,3 @@ const RAW_MOCK_SESSIONS: MockSession[] = [
     ],
   },
 ];
-
-// Mock nodes only exist for the landing demo; real nodes come from api/client.ts.
-const withProviderFields = (session: MockSession): Session => ({
-  ...session,
-  nodes: session.nodes.map((n) => ({
-    ...n,
-    reply: null,
-    provider: null,
-    failed_providers: [],
-  })),
-});
-
-export const MOCK_SESSIONS: Session[] = RAW_MOCK_SESSIONS.map(withProviderFields);

@@ -2,7 +2,6 @@ import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { MemoryNode } from '../../types';
 import { ModelBadge, StatusBadge } from './Badges';
-import { BookmarkCheck, Layers } from 'lucide-react';
 
 interface CheckpointNodeData {
   node: MemoryNode;
@@ -17,60 +16,49 @@ export const CheckpointNode: React.FC<{ data: CheckpointNodeData }> = memo(({ da
   return (
     <div
       id={`node-${node.node_id}`}
-      className={`group relative rounded-xl transition-all duration-200 cursor-pointer select-none ${
+      className={`group relative rounded-lg transition-colors cursor-pointer select-none border p-3.5 w-[300px] bg-[#14122B] ${
         isSelected
-          ? 'bg-[#11232c] border-cyan-400 shadow-xl shadow-cyan-900/30 ring-2 ring-cyan-400/50 -translate-y-0.5'
-          : 'bg-[#0d1a21] hover:bg-[#102029] border-cyan-700/60 hover:border-cyan-500/80 shadow-md shadow-cyan-950/30'
-      } border p-4 w-[320px]`}
+          ? 'border-[#BFD4FF] ring-1 ring-[#BFD4FF]/50'
+          : 'border-[#2A2455] hover:border-[#38326e]'
+      }`}
     >
-      {/* Target Handle */}
       <Handle
         type="target"
         position={isLR ? Position.Left : Position.Top}
-        className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-[#0d1a21] transition-transform group-hover:scale-125"
+        className="!w-2 !h-2 !bg-[#BFD4FF] !border-2 !border-[#14122B]"
       />
 
       {/* Top Banner */}
-      <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-cyan-900/50">
-        <div className="flex items-center gap-1.5">
-          <span className="p-1 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-600/40">
-            <BookmarkCheck className="w-3.5 h-3.5" />
+      <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-[#2A2455]">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#BFD4FF] glow-gemini" />
+          <span className="text-xs font-medium text-[#EEEAF7] font-body">
+            Checkpoint
           </span>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
-                Checkpoint
-              </span>
-              <span className="font-mono text-[10px] font-semibold text-cyan-400/80">
-                #{node.node_id}
-              </span>
-            </div>
-            <span className="text-[9px] text-cyan-300/70 font-mono tracking-tight flex items-center gap-1">
-              <Layers className="w-2.5 h-2.5" /> Compressed Memory Snapshot
-            </span>
-          </div>
+          <span className="font-mono-code text-[11px] text-[#9C98B8]">
+            #{node.node_id}
+          </span>
         </div>
         <ModelBadge model={node.model_used} size="sm" />
       </div>
 
       {/* Content Preview */}
-      <p className="text-[12px] text-cyan-100/90 leading-snug line-clamp-3 mb-2.5 font-normal">
+      <p className="text-xs text-[#EEEAF7] leading-relaxed line-clamp-3 mb-2.5 font-body">
         {node.content}
       </p>
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-1.5 border-t border-cyan-900/40 text-[10px] text-cyan-300/70">
+      <div className="flex items-center justify-between pt-2 border-t border-[#2A2455] text-[10px] text-[#9C98B8]">
         <StatusBadge status={node.status_at_this_point} size="sm" />
-        <span className="font-mono">
+        <span className="font-mono-code">
           {new Date(node.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
 
-      {/* Source Handle */}
       <Handle
         type="source"
         position={isLR ? Position.Right : Position.Bottom}
-        className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-[#0d1a21] transition-transform group-hover:scale-125"
+        className="!w-2 !h-2 !bg-[#BFD4FF] !border-2 !border-[#14122B]"
       />
     </div>
   );

@@ -7,7 +7,6 @@ import {
   buildColonyGraph,
   COLONY_COLORS,
 } from '../utils/colonyPhysics';
-import { providerLabel } from './nodes/Badges';
 import {
   Play,
   Pause,
@@ -23,6 +22,8 @@ import {
   GitFork,
   MessageSquare,
   Search,
+  Network,
+  Share2,
 } from 'lucide-react';
 
 interface ColonyCanvasViewProps {
@@ -30,6 +31,8 @@ interface ColonyCanvasViewProps {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   centerNodeTrigger?: string | null;
+  viewMode?: 'colony' | 'tree';
+  onViewModeChange?: (mode: 'colony' | 'tree') => void;
 }
 
 export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
@@ -37,6 +40,8 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
   selectedNodeId,
   onSelectNode,
   centerNodeTrigger,
+  viewMode = 'colony',
+  onViewModeChange,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -65,7 +70,7 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
   const [colonyGravity, setColonyGravity] = useState<number>(0.07); // Pull towards checkpoint center
   const [showAllLabels, setShowAllLabels] = useState<boolean>(false);
   const [showReferences, setShowReferences] = useState<boolean>(true);
-  const [modelFilter, setModelFilter] = useState<'all' | 'openai' | 'gemini' | 'claude'>('all');
+  const [modelFilter, setModelFilter] = useState<'all' | 'gpt' | 'claude'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'checkpoint' | 'decision' | 'turn'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showSettings, setShowSettings] = useState<boolean>(false);
@@ -177,7 +182,8 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
   // Center camera on a requested node
   useEffect(() => {
     if (!centerNodeTrigger || !containerRef.current) return;
-    const targetNode = nodesRef.current.find((n) => centerNodeTrigger.startsWith(`${n.id}-`));
+    const targetNodeId = centerNodeTrigger.split('-')[0];
+    const targetNode = nodesRef.current.find((n) => n.id === targetNodeId);
     if (targetNode && targetNode.x !== undefined && targetNode.y !== undefined) {
       const { width, height } = containerRef.current.getBoundingClientRect();
       transformRef.current = {
@@ -240,10 +246,7 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
       };
 
       const isNodeVisible = (n: ColonySimNode) => {
-        if (modelFilter !== 'all') {
-          const { colorKey } = providerLabel(n.node);
-          if (colorKey !== modelFilter) return false;
-        }
+        if (modelFilter !== 'all' && n.model !== modelFilter) return false;
         if (typeFilter !== 'all' && n.type !== typeFilter) return false;
         return true;
       };
@@ -705,84 +708,95 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
     <div
       ref={containerRef}
       id="obsidian-living-colony-container"
-      className="relative w-full h-full flex flex-col bg-[#101013] overflow-hidden select-none"
+      className="relative w-full h-full flex flex-col bg-[#0B0D12] overflow-hidden select-none text-left"
     >
-      {/* Top Obsidian-Style Toolbar */}
-      <div className="h-14 px-4 bg-[#141417] border-b border-[#24242c] flex items-center justify-between z-10 shrink-0">
-        {/* Session Title & Colony Stats */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-[#efeff6] truncate tracking-tight">
-              {session.title}
-            </h2>
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-mono bg-[#20202a] text-[#a0a1b5] border border-[#2b2b38]">
-              {session.nodes.length} nodes
-            </span>
+      {/* Top Toolbar */}
+      <div className="h-12 px-3 bg-[#12151C] border-b border-[#232733] flex items-center justify-between gap-2 z-10 shrink-0 select-none">
+        {/* Left Side: View Mode Switcher + Stats Badge */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* View Mode Toggle Pill */}
+          <div className="flex items-center bg-[#0B0D12] rounded-lg p-0.5 border border-[#232733] shrink-0">
+            <button
+              type="button"
+              id="view-mode-colony-btn"
+              onClick={() => onViewModeChange?.('colony')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'colony'
+                  ? 'bg-[#7C5CFF] text-white shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
+              }`}
+            >
+              <Network className="w-3.5 h-3.5" />
+              <span>Living Colony</span>
+            </button>
+            <button
+              type="button"
+              id="view-mode-tree-btn"
+              onClick={() => onViewModeChange?.('tree')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'tree'
+                  ? 'bg-[#7C5CFF] text-white shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
+              }`}
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Tree Flow</span>
+            </button>
           </div>
 
-          <div className="hidden lg:flex items-center gap-2.5 pl-3 border-l border-[#282834] text-[11px]">
-            <span className="flex items-center gap-1.5 text-pink-300 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#ec4899] shadow-xs shadow-pink-500/50" />
-              {checkpointsCount} Colonies
+          {/* Quick Node Count Badge */}
+          <span className="px-2 py-0.5 rounded text-[11px] font-mono-code bg-[#0B0D12] text-[#BFD4FF] border border-[#232733] shrink-0">
+            {session.nodes.length} nodes
+          </span>
+
+          {/* Subtle Stats Breakdown (hidden on narrower containers to prevent squeezing) */}
+          <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-[#232733] text-[11px] text-[#8A92A6]">
+            <span className="flex items-center gap-1 text-[#BFD4FF]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#BFD4FF]" />
+              {checkpointsCount} colonies
             </span>
-            <span className="flex items-center gap-1.5 text-purple-300">
-              <span className="w-2 h-2 rounded-full bg-[#8b5cf6]" />
-              {decisionsCount} Decisions
+            <span className="flex items-center gap-1 text-[#F97316]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#F97316]" />
+              {decisionsCount} decisions
             </span>
-            <span className="flex items-center gap-1.5 text-[#9da0b5]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-              {turnsCount} Turns
+            <span className="flex items-center gap-1 text-[#10B981]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+              {turnsCount} turns
             </span>
           </div>
         </div>
 
-        {/* Toolbar Controls */}
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Search Highlight */}
-          <div className="relative hidden md:block w-44">
-            <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6e7085]" />
-            <input
-              id="colony-search-input"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Highlight node..."
-              className="w-full bg-[#1b1b21] border border-[#2a2a35] rounded-lg pl-7 pr-2.5 py-1 text-xs text-[#e1e2ec] placeholder-[#646578] focus:outline-none focus:border-indigo-500/60"
-            />
-          </div>
-
+        {/* Right Side Controls: Clean Spacing, No Truncation */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Living Drift Toggle */}
           <button
+            type="button"
             id="toggle-physics-drift-btn"
             onClick={() => setPhysicsDriftEnabled(!physicsDriftEnabled)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
               physicsDriftEnabled
-                ? 'bg-emerald-950/50 text-emerald-300 border-emerald-700/50 shadow-xs'
-                : 'bg-[#1c1c22] text-[#7d7e93] border-[#292936] hover:text-[#b4b5c7]'
+                ? 'bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30'
+                : 'bg-[#0B0D12] text-[#8A92A6] border-[#232733] hover:text-[#F1F3F9]'
             }`}
-            title={physicsDriftEnabled ? 'Living physics active (continuous drift)' : 'Physics paused'}
+            title={physicsDriftEnabled ? 'Live physics drift active' : 'Physics drift frozen'}
           >
-            {physicsDriftEnabled ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Living Colony</span>
-              </>
-            ) : (
-              <>
-                <Pause className="w-3 h-3" />
-                <span>Frozen</span>
-              </>
-            )}
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                physicsDriftEnabled ? 'bg-[#10B981] animate-pulse' : 'bg-[#8A92A6]'
+              }`}
+            />
+            <span>{physicsDriftEnabled ? 'Live' : 'Frozen'}</span>
           </button>
 
           {/* Labels Toggle */}
           <button
+            type="button"
             id="toggle-labels-btn"
             onClick={() => setShowAllLabels(!showAllLabels)}
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
               showAllLabels
-                ? 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60'
-                : 'bg-[#1c1c22] text-[#86879c] hover:text-[#e4e5f0] border-[#292936]'
+                ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border-[#7C5CFF]/40'
+                : 'bg-[#0B0D12] text-[#8A92A6] hover:text-[#F1F3F9] border-[#232733]'
             }`}
             title="Toggle All Node Labels"
           >
@@ -791,12 +805,13 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
 
           {/* Physics & Gravity Settings Slider Panel Toggle */}
           <button
+            type="button"
             id="toggle-colony-settings-btn"
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-1.5 rounded-lg border transition-colors ${
+            className={`p-1.5 rounded-lg border text-xs transition-colors ${
               showSettings
-                ? 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60'
-                : 'bg-[#1c1c22] text-[#86879c] hover:text-[#e4e5f0] border-[#292936]'
+                ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border-[#7C5CFF]/40'
+                : 'bg-[#0B0D12] text-[#8A92A6] hover:text-[#F1F3F9] border-[#232733]'
             }`}
             title="Colony Physics Settings"
           >
@@ -805,9 +820,10 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
 
           {/* Fit View */}
           <button
+            type="button"
             id="colony-fit-view-btn"
             onClick={handleFitView}
-            className="p-1.5 rounded-lg bg-[#1c1c22] hover:bg-[#252530] text-[#86879c] hover:text-[#e4e5f0] border border-[#292936] transition-colors"
+            className="p-1.5 rounded-lg bg-[#0B0D12] hover:bg-[#181C26] text-[#8A92A6] hover:text-[#F1F3F9] border border-[#232733] transition-colors"
             title="Reset / Fit View"
           >
             <Maximize className="w-3.5 h-3.5" />
@@ -815,12 +831,13 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
 
           {/* Legend */}
           <button
+            type="button"
             id="toggle-colony-legend-btn"
             onClick={() => setShowLegend(!showLegend)}
             className={`p-1.5 rounded-lg border transition-colors ${
               showLegend
-                ? 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60'
-                : 'bg-[#1c1c22] text-[#86879c] hover:text-[#e4e5f0] border-[#292936]'
+                ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border-[#7C5CFF]/40'
+                : 'bg-[#0B0D12] text-[#8A92A6] hover:text-[#F1F3F9] border-[#232733]'
             }`}
             title="Visual Legend"
           >
@@ -837,39 +854,34 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onWheel={handleWheel}
-          className="w-full h-full block bg-[#101013]"
+          className="w-full h-full block bg-[#0B0D12]"
         />
 
         {/* Ambient Colony HUD (Bottom-left) */}
-        <div className="absolute bottom-4 left-4 pointer-events-none bg-[#141419]/90 backdrop-blur-md border border-[#282834] rounded-xl px-3 py-2 text-[11px] text-[#8f90a4] shadow-xl flex items-center gap-3">
+        <div className="absolute bottom-4 left-4 pointer-events-none bg-[#12151C]/90 backdrop-blur-md border border-[#232733] rounded-xl px-3 py-2 text-[11px] text-[#8A92A6] shadow-xl flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500" />
+            <span className="w-2 h-2 rounded-full bg-[#EC4899] shadow-xs shadow-pink-500" />
             <span className="text-pink-200 font-medium">Checkpoint Hubs</span>
           </div>
-          <span className="text-[#3c3d4c]">•</span>
+          <span className="text-[#323849]">•</span>
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>OpenAI</span>
+            <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+            <span>GPT</span>
           </div>
-          <span className="text-[#3c3d4c]">•</span>
+          <span className="text-[#323849]">•</span>
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <span>Gemini</span>
-          </div>
-          <span className="text-[#3c3d4c]">•</span>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="w-2 h-2 rounded-full bg-[#F97316]" />
             <span>Claude</span>
           </div>
-          <span className="text-[#3c3d4c]">•</span>
-          <span className="font-mono text-[10px] text-[#6d6e82]">
+          <span className="text-[#323849]">•</span>
+          <span className="font-mono text-[10px] text-[#8A92A6]">
             Zoom: {Math.round(zoomLevel * 100)}%
           </span>
         </div>
 
         {/* Live Interaction Tip (Top-left floating) */}
-        <div className="absolute top-3 left-4 pointer-events-none bg-[#16161c]/80 backdrop-blur-xs border border-[#292936] rounded-lg px-2.5 py-1 text-[11px] text-[#7d7e94] flex items-center gap-2">
-          <span className="text-indigo-400 font-semibold">Tip:</span>
+        <div className="absolute top-2.5 left-3 pointer-events-none bg-[#0B0D12]/90 backdrop-blur-md border border-[#232733] rounded-lg px-2.5 py-1 text-[11px] text-[#8A92A6] flex items-center gap-1.5 shadow-md">
+          <span className="text-[#7C5CFF] font-semibold">Tip:</span>
           <span>Drag nodes to pull colony physics • Click to inspect memory payload</span>
         </div>
 
@@ -932,7 +944,7 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
             <div className="space-y-1.5 pt-1 border-t border-[#262632]">
               <span className="text-[11px] text-[#9697ab] block">Filter Model:</span>
               <div className="grid grid-cols-3 gap-1">
-                {(['all', 'openai', 'gemini', 'claude'] as const).map((m) => (
+                {(['all', 'gpt', 'claude'] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setModelFilter(m)}
@@ -1008,13 +1020,12 @@ export const ColonyCanvasView: React.FC<ColonyCanvasViewProps> = ({
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#06b6d4]" />
                   <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
                 </div>
                 <div>
                   <p className="font-semibold text-[#e1e2ed]">Conversation Turns</p>
                   <p className="text-[10px] text-[#7d7e93]">
-                    Small particles: Emerald = OpenAI, Cyan = Gemini, Amber = Claude. Drift organically with spring forces.
+                    Small particles: Emerald = GPT-4o, Amber = Claude 3.5. Drift organically with spring forces.
                   </p>
                 </div>
               </div>

@@ -10,7 +10,6 @@ import {
   BackgroundVariant,
   ReactFlowInstance,
   Panel,
-  MarkerType,
 } from '@xyflow/react';
 import { MemoryNode, Session } from '../types';
 import { TurnNode } from './nodes/TurnNode';
@@ -93,7 +92,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
     setTimeout(() => {
       rfInstanceRef.current?.fitView({ padding: 0.28, duration: 400 });
     }, 50);
-  }, [session.id, session.nodes, direction, showReferences, spacing, setNodes, setEdges, viewMode]);
+  }, [session.id, direction, showReferences, spacing, setNodes, setEdges, viewMode]);
 
   // Synchronize selection state in nodes/edges
   useEffect(() => {
@@ -127,9 +126,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
             },
             markerEnd: {
               ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
-              type: typeof e.markerEnd === 'object' && e.markerEnd?.type
-                ? e.markerEnd.type
-                : MarkerType.ArrowClosed,
               color: isConnectedToSelected ? '#818cf8' : '#4f5263',
             },
             zIndex: isConnectedToSelected ? 10 : 1,
@@ -145,9 +141,6 @@ export const GraphView: React.FC<GraphViewProps> = ({
             },
             markerEnd: {
               ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
-              type: typeof e.markerEnd === 'object' && e.markerEnd?.type
-                ? e.markerEnd.type
-                : MarkerType.ArrowClosed,
               color: isConnectedToSelected ? '#c084fc' : '#7c3aed',
             },
             zIndex: isConnectedToSelected ? 12 : 2,
@@ -161,7 +154,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
   // Center on node in tree view if requested
   useEffect(() => {
     if (viewMode === 'tree' && centerNodeTrigger && rfInstanceRef.current) {
-      const node = nodes.find((n) => centerNodeTrigger.startsWith(`${n.id}-`));
+      const node = nodes.find((n) => n.id === centerNodeTrigger);
       if (node) {
         rfInstanceRef.current.setCenter(node.position.x + 130, node.position.y + 60, {
           zoom: 1.1,
@@ -181,32 +174,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
   // If Living Colony view is active, render the D3 Canvas simulation with mode switcher bar
   if (viewMode === 'colony') {
     return (
-      <div className="relative w-full h-full flex flex-col">
-        {/* Mode Switcher Pill (Floating Top Center) */}
-        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 flex items-center bg-[#17171d]/90 backdrop-blur-md rounded-xl p-1 border border-[#2d2d3c] shadow-xl">
-          <button
-            id="view-mode-colony-btn"
-            onClick={() => setViewMode('colony')}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all bg-indigo-600 text-white shadow-xs"
-          >
-            <Network className="w-3.5 h-3.5" />
-            <span>Living Colony</span>
-          </button>
-          <button
-            id="view-mode-tree-btn"
-            onClick={() => setViewMode('tree')}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all text-[#8e8fa5] hover:text-[#e1e2ec]"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Tree Flow</span>
-          </button>
-        </div>
-
+      <div className="relative w-full h-full flex flex-col bg-[#0B0D12]">
         <ColonyCanvasView
           session={session}
           selectedNodeId={selectedNodeId}
           onSelectNode={onSelectNode}
           centerNodeTrigger={centerNodeTrigger}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
       </div>
     );
@@ -216,76 +191,50 @@ export const GraphView: React.FC<GraphViewProps> = ({
   const turnsCount = session.nodes.filter((n) => n.type === 'turn').length;
   const decisionsCount = session.nodes.filter((n) => n.type === 'decision').length;
   const checkpointsCount = session.nodes.filter((n) => n.type === 'checkpoint').length;
-  const forksCount = session.nodes.filter((n) => {
-    const children = session.nodes.filter((c) => c.prev_id === n.node_id);
-    return children.length > 1;
-  }).length;
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-[#101013] overflow-hidden">
-      {/* Top Obsidian-style Toolbar */}
-      <div className="h-14 px-4 bg-[#141417] border-b border-[#24242c] flex items-center justify-between z-10 shrink-0 select-none">
-        {/* Title & Quick Stats */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-[#efeff6] truncate tracking-tight">
-              {session.title}
-            </h2>
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-mono bg-[#20202a] text-[#8e8fa6] border border-[#2b2b38]">
-              {session.nodes.length} nodes
-            </span>
-          </div>
-
-          <div className="hidden md:flex items-center gap-2 pl-2 border-l border-[#282834] text-[11px] text-[#7c7d91]">
-            <span className="flex items-center gap-1 text-pink-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
-              {checkpointsCount} checkpoints
-            </span>
-            <span className="flex items-center gap-1 text-purple-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#8b5cf6]" />
-              {decisionsCount} decisions
-            </span>
-            <span className="flex items-center gap-1 text-emerald-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-              {turnsCount} turns
-            </span>
-            {forksCount > 0 && (
-              <span className="flex items-center gap-1 text-amber-300 font-mono text-[10px] px-1.5 py-0.2 rounded bg-amber-950/40 border border-amber-800/40">
-                <GitFork className="w-2.5 h-2.5" /> {forksCount} {forksCount === 1 ? 'branch' : 'branches'}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Controls and Toggles */}
-        <div className="flex items-center gap-2 shrink-0">
+    <div className="relative w-full h-full flex flex-col bg-[#0B0D12] overflow-hidden text-left">
+      {/* Top Toolbar */}
+      <div className="h-12 px-3 bg-[#12151C] border-b border-[#232733] flex items-center justify-between gap-2 z-10 shrink-0 select-none">
+        {/* Left: View Mode Switcher + Stats & Direction */}
+        <div className="flex items-center gap-2.5 min-w-0">
           {/* Mode Switcher */}
-          <div className="flex items-center bg-[#1c1c22] rounded-lg p-0.5 border border-[#282834]">
+          <div className="flex items-center bg-[#0B0D12] rounded-lg p-0.5 border border-[#232733] shrink-0">
             <button
+              type="button"
+              id="view-mode-colony-btn"
               onClick={() => setViewMode('colony')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-[#848599] hover:text-[#c4c5d6] transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-[#8A92A6] hover:text-[#F1F3F9] transition-all"
             >
-              <Network className="w-3 h-3 text-indigo-400" />
-              <span>Colony</span>
+              <Network className="w-3.5 h-3.5" />
+              <span>Living Colony</span>
             </button>
             <button
+              type="button"
+              id="view-mode-tree-btn"
               onClick={() => setViewMode('tree')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-[#292936] text-[#f1f1f5] shadow-xs transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[#7C5CFF] text-white shadow-xs transition-all"
             >
-              <Share2 className="w-3 h-3 text-white" />
-              <span>Tree</span>
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Tree Flow</span>
             </button>
           </div>
+
+          {/* Quick Node Count Badge */}
+          <span className="px-2 py-0.5 rounded text-[11px] font-mono-code bg-[#0B0D12] text-[#BFD4FF] border border-[#232733] shrink-0">
+            {session.nodes.length} nodes
+          </span>
 
           {/* Layout Direction Toggle */}
-          <div className="flex items-center bg-[#1c1c22] rounded-lg p-0.5 border border-[#282834]">
+          <div className="flex items-center bg-[#0B0D12] rounded-lg p-0.5 border border-[#232733] shrink-0">
             <button
+              type="button"
               id="layout-horizontal-btn"
               onClick={() => setDirection('LR')}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 direction === 'LR'
-                  ? 'bg-[#292936] text-[#f1f1f5] shadow-xs'
-                  : 'text-[#848599] hover:text-[#c4c5d6]'
+                  ? 'bg-[#181C26] text-[#F1F3F9] shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
               }`}
               title="Horizontal Timeline Flow"
             >
@@ -293,12 +242,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
               <span className="hidden sm:inline">Timeline</span>
             </button>
             <button
+              type="button"
               id="layout-vertical-btn"
               onClick={() => setDirection('TB')}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 direction === 'TB'
-                  ? 'bg-[#292936] text-[#f1f1f5] shadow-xs'
-                  : 'text-[#848599] hover:text-[#c4c5d6]'
+                  ? 'bg-[#181C26] text-[#F1F3F9] shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
               }`}
               title="Vertical Tree Flow"
             >
@@ -306,46 +256,48 @@ export const GraphView: React.FC<GraphViewProps> = ({
               <span className="hidden sm:inline">Tree</span>
             </button>
           </div>
+        </div>
 
+        {/* Right: Spacing + Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Node Spacing / Density Control */}
-          <div className="hidden sm:flex items-center bg-[#1c1c22] rounded-lg p-0.5 border border-[#282834]">
-            <span className="px-1.5 text-[10px] text-[#6b6c80] font-medium flex items-center gap-1">
-              <UnfoldHorizontal className="w-3 h-3 text-[#8b8ca3]" />
-              <span className="hidden xl:inline">Spacing:</span>
-            </span>
+          <div className="hidden sm:flex items-center bg-[#0B0D12] rounded-lg p-0.5 border border-[#232733]">
             <button
+              type="button"
               id="spacing-compact-btn"
               onClick={() => setSpacing('compact')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 spacing === 'compact'
-                  ? 'bg-[#292936] text-[#f1f1f5] shadow-xs'
-                  : 'text-[#848599] hover:text-[#c4c5d6]'
+                  ? 'bg-[#181C26] text-[#F1F3F9] shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
               }`}
               title="Compact spacing between nodes"
             >
               Compact
             </button>
             <button
+              type="button"
               id="spacing-comfortable-btn"
               onClick={() => setSpacing('comfortable')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 spacing === 'comfortable'
-                  ? 'bg-[#292936] text-[#f1f1f5] shadow-xs'
-                  : 'text-[#848599] hover:text-[#c4c5d6]'
+                  ? 'bg-[#181C26] text-[#F1F3F9] shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
               }`}
-              title="Comfortable / balanced spacing between nodes"
+              title="Normal spacing between nodes"
             >
               Normal
             </button>
             <button
+              type="button"
               id="spacing-spacious-btn"
               onClick={() => setSpacing('spacious')}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                 spacing === 'spacious'
-                  ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-xs'
-                  : 'text-[#848599] hover:text-[#c4c5d6]'
+                  ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border border-[#7C5CFF]/40 shadow-xs'
+                  : 'text-[#8A92A6] hover:text-[#F1F3F9]'
               }`}
-              title="Extra spacious / airy separation between nodes"
+              title="Spacious separation between nodes"
             >
               Spacious
             </button>
@@ -353,24 +305,25 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           {/* References Toggle */}
           <button
+            type="button"
             id="toggle-references-btn"
             onClick={() => setShowReferences(!showReferences)}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            className={`p-1.5 rounded-lg border text-xs font-medium transition-colors ${
               showReferences
-                ? 'bg-purple-950/50 text-purple-300 border-purple-800/50'
-                : 'bg-[#1c1c22] text-[#7b7c90] border-[#282834] hover:text-[#b4b5c7]'
+                ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border-[#7C5CFF]/40'
+                : 'bg-[#0B0D12] text-[#8A92A6] border-[#232733] hover:text-[#F1F3F9]'
             }`}
-            title="Toggle Decision Reference Lines"
+            title="Toggle Reference Links"
           >
-            {showReferences ? <Eye className="w-3 h-3 text-purple-400" /> : <EyeOff className="w-3 h-3" />}
-            <span className="hidden lg:inline">Ref Links</span>
+            {showReferences ? <Eye className="w-3.5 h-3.5 text-[#7C5CFF]" /> : <EyeOff className="w-3.5 h-3.5" />}
           </button>
 
           {/* Fit View */}
           <button
+            type="button"
             id="fit-view-toolbar-btn"
             onClick={() => rfInstanceRef.current?.fitView({ padding: 0.25, duration: 400 })}
-            className="p-1.5 rounded-lg bg-[#1c1c22] hover:bg-[#252530] text-[#7b7c90] hover:text-[#e4e5f0] border border-[#282834] transition-colors"
+            className="p-1.5 rounded-lg bg-[#0B0D12] hover:bg-[#181C26] text-[#8A92A6] hover:text-[#F1F3F9] border border-[#232733] transition-colors"
             title="Fit Entire Graph to View"
           >
             <Maximize className="w-3.5 h-3.5" />
@@ -378,12 +331,13 @@ export const GraphView: React.FC<GraphViewProps> = ({
 
           {/* Legend Toggle */}
           <button
+            type="button"
             id="toggle-legend-btn"
             onClick={() => setShowLegend(!showLegend)}
             className={`p-1.5 rounded-lg border transition-colors ${
               showLegend
-                ? 'bg-indigo-950/70 text-indigo-300 border-indigo-700/60'
-                : 'bg-[#1c1c22] text-[#7b7c90] hover:text-[#e4e5f0] border-[#282834]'
+                ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border-[#7C5CFF]/40'
+                : 'bg-[#0B0D12] text-[#8A92A6] hover:text-[#F1F3F9] border-[#232733]'
             }`}
             title="Toggle Legend"
           >
@@ -409,10 +363,10 @@ export const GraphView: React.FC<GraphViewProps> = ({
           minZoom={0.2}
           maxZoom={2.5}
           proOptions={{ hideAttribution: true }}
-          className="bg-[#101013]"
+          className="bg-[#14122B]"
         >
           <Background
-            color="#22222b"
+            color="#2A2455"
             gap={20}
             size={1.2}
             variant={BackgroundVariant.Dots}
@@ -420,19 +374,19 @@ export const GraphView: React.FC<GraphViewProps> = ({
           <Controls
             position="bottom-left"
             showInteractive={false}
-            className="!bg-[#17171d]/90 !border-[#2c2d3a] !rounded-xl !overflow-hidden !shadow-xl [&>button]:!bg-[#17171d] [&>button]:!border-b-[#2c2d3a] [&>button]:!text-[#a2a3b8] [&>button:hover]:!bg-[#22222c] [&>button:hover]:!text-[#f0f1f8]"
+            className="!bg-[#14122B] !border-[#2A2455] !rounded-md !overflow-hidden !shadow-none [&>button]:!bg-[#14122B] [&>button]:!border-b-[#2A2455] [&>button]:!text-[#9C98B8] [&>button:hover]:!bg-[#2A2455] [&>button:hover]:!text-[#EEEAF7]"
           />
           <MiniMap
             position="bottom-right"
             zoomable
             pannable
             nodeColor={(n) => {
-              if (n.type === 'checkpoint') return '#ec4899';
-              if (n.type === 'decision') return '#8b5cf6';
-              return '#10b981';
+              if (n.type === 'checkpoint') return '#BFD4FF';
+              if (n.type === 'decision') return '#E58AB0';
+              return '#F0A35E';
             }}
-            maskColor="rgba(16, 16, 19, 0.75)"
-            className="!bg-[#141418]/90 !border-[#2a2a38] !rounded-xl !overflow-hidden !shadow-2xl hidden md:block"
+            maskColor="rgba(20, 18, 43, 0.85)"
+            className="!bg-[#14122B] !border-[#2A2455] !rounded-md !overflow-hidden hidden md:block"
           />
         </ReactFlow>
 

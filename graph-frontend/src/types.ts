@@ -1,21 +1,21 @@
 export type MemoryNodeType = 'turn' | 'decision' | 'checkpoint';
 
-export type ModelUsed = string;
+export type NodeStatus = 'in_progress' | 'blocked' | 'done';
 
-export type NodeStatus = 'in_progress' | 'done' | 'blocked';
+export type ModelUsed = string;
 
 export interface MemoryNode {
   node_id: string;
   prev_id: string | null;
   type: MemoryNodeType;
   content: string;
-  reply: string | null;
-  model_used: ModelUsed;
+  reply?: string | null;
+  model_used: string; // Plain string as requested (e.g. 'openai', 'gemini', 'claude', 'gpt', 'openrouter')
   status_at_this_point: NodeStatus;
   timestamp: string;
-  references?: string[] | null;
-  provider: string | null;
-  failed_providers: string[];
+  provider?: string | null;
+  failed_providers?: string[];
+  references?: string[]; // present on decision nodes
 }
 
 export interface SessionSummary {
@@ -28,12 +28,9 @@ export interface SessionSummary {
 
 export interface Session {
   id: string;
+  title: string;
+  description: string;
+  updatedAt: string;
+  status: 'active' | 'completed' | 'blocked';
   nodes: MemoryNode[];
-  node_count?: number;
-  latest_activity?: string | null;
-  models?: string[];
-  title?: string;
-  description?: string;
-  updatedAt?: string;
-  status?: 'active' | 'completed' | 'blocked';
 }

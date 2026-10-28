@@ -1,24 +1,13 @@
 import React, { useState } from 'react';
 import { MemoryNode } from '../types';
-import { ModelBadge, StatusBadge, providerLabel } from './nodes/Badges';
+import { ModelBadge, StatusBadge } from './nodes/Badges';
 import {
   Copy,
   Check,
   ChevronRight,
-  GitFork,
-  BookmarkCheck,
-  MessageSquare,
   ArrowLeft,
   ArrowRight,
-  Link2,
-  Calendar,
-  Layers,
-  Sparkles,
-  Cpu,
-  CornerDownRight,
   Maximize2,
-  AlertTriangle,
-  HelpCircle,
 } from 'lucide-react';
 
 interface DetailPanelProps {
@@ -42,7 +31,10 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
 
   const handleCopy = () => {
     if (!selectedNode) return;
-    navigator.clipboard.writeText(selectedNode.content);
+    const text = selectedNode.reply
+      ? `User: ${selectedNode.content}\n\nAssistant (${selectedNode.model_used}):\n${selectedNode.reply}`
+      : selectedNode.content;
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -51,13 +43,13 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
     return (
       <aside
         id="obsidian-detail-sidebar-collapsed"
-        className="h-full w-12 bg-[#16161d] border-l border-[#272733] flex flex-col items-center py-3 shrink-0"
+        className="h-full w-12 bg-[#14122B] border-l border-[#2A2455] flex flex-col items-center py-3 shrink-0"
       >
         <button
           id="expand-detail-btn"
           onClick={onToggleCollapse}
-          className="p-2 rounded-lg bg-[#1e1e25] hover:bg-[#282834] text-[#a0a1b5] transition-colors"
-          title="Open Node Details"
+          className="p-2 rounded-full bg-[#2A2455] text-[#9C98B8] hover:text-[#EEEAF7] transition-colors"
+          title="Open node inspector"
         >
           <ChevronRight className="w-4 h-4 rotate-180" />
         </button>
@@ -70,7 +62,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
     ? allNodes.find((n) => n.node_id === selectedNode.prev_id)
     : null;
 
-  // Find direct child nodes (for tracking branches)
+  // Find direct child nodes
   const childNodes = selectedNode
     ? allNodes.filter((n) => n.prev_id === selectedNode.node_id)
     : [];
@@ -80,63 +72,38 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
     ? allNodes.filter((n) => selectedNode.references?.includes(n.node_id))
     : [];
 
-  // Detect model handoff - check parent provider, or failed_providers
+  // Detect model handoff
   const isHandoff =
-    (parentNode && parentNode.provider !== selectedNode?.provider && parentNode.provider && selectedNode?.provider) ||
-    (selectedNode?.failed_providers && selectedNode.failed_providers.length > 0);
+    parentNode && parentNode.model_used !== selectedNode?.model_used;
 
-  const handoffInfo = (() => {
-    if (!selectedNode) return null;
-    // Blocked nodes are covered by the "No Provider Answered" banner,
-    // and failover/handoff only makes sense when a provider actually answered.
-    if (selectedNode.status_at_this_point === 'blocked' || selectedNode.provider === null) return null;
-    // If failed_providers exist, show failover callout
-    if (selectedNode.failed_providers && selectedNode.failed_providers.length > 0) {
-      const { display: providerDisplay } = providerLabel(selectedNode);
-      return {
-        from: selectedNode.failed_providers.join(', '),
-        to: providerDisplay,
-        text: `${selectedNode.failed_providers.join(' > ')} failed (${selectedNode.failed_providers.length} tried), ${providerDisplay} answered`,
-      };
-    }
-    // If parent provider differs
-    if (parentNode && parentNode.provider !== selectedNode.provider && parentNode.provider && selectedNode.provider) {
-      const { display: parentDisplay } = providerLabel(parentNode);
-      const { display: currentDisplay } = providerLabel(selectedNode);
-      return {
-        from: parentDisplay,
-        to: currentDisplay,
-        text: `Answered by ${currentDisplay}. The previous turn was answered by ${parentDisplay}.`,
-      };
-    }
-    return null;
-  })();
+  const isBlocked = selectedNode?.status_at_this_point === 'blocked';
+  const hasFailover = Boolean(selectedNode?.failed_providers && selectedNode.failed_providers.length > 0);
 
   return (
     <aside
       id="obsidian-detail-sidebar"
-      className="h-full w-80 lg:w-96 bg-[#16161d] border-l border-[#272733] flex flex-col shrink-0 overflow-hidden"
+      className="h-full w-80 lg:w-96 bg-[#14122B] border-l border-[#2A2455] flex flex-col shrink-0 overflow-hidden text-left"
     >
       {/* Header */}
-      <div className="h-14 px-4 flex items-center justify-between border-b border-[#272733] shrink-0 bg-[#1b1b23]">
+      <div className="h-14 px-4 flex items-center justify-between border-b border-[#2A2455] shrink-0 bg-[#14122B]">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-xs text-[#dcdde7] uppercase tracking-wider">
-            Node Inspector
+          <span className="font-display font-bold text-xs text-[#EEEAF7]">
+            Node inspector
           </span>
           {selectedNode && (
-            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-[#252530] text-indigo-300 font-bold">
+            <span className="font-mono-code text-xs px-2 py-0.5 rounded-full bg-[#2A2455] text-[#BFD4FF]">
               #{selectedNode.node_id}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {selectedNode && onCenterNode && (
             <button
               id="center-selected-node-btn"
               onClick={() => onCenterNode(selectedNode.node_id)}
-              className="p-1.5 rounded text-[#7c7d91] hover:text-[#d0d1df] hover:bg-[#22222c] transition-colors"
-              title="Focus in Graph"
+              className="p-1.5 rounded-full text-[#9C98B8] hover:text-[#EEEAF7] hover:bg-[#2A2455] transition-colors"
+              title="Focus in graph"
             >
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
@@ -144,8 +111,8 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
           <button
             id="collapse-detail-btn"
             onClick={onToggleCollapse}
-            className="p-1.5 rounded text-[#7c7d91] hover:text-[#d0d1df] hover:bg-[#22222c] transition-colors"
-            title="Collapse Details Panel"
+            className="p-1.5 rounded-full text-[#9C98B8] hover:text-[#EEEAF7] hover:bg-[#2A2455] transition-colors"
+            title="Collapse panel"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -154,145 +121,120 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
 
       {/* Body Content */}
       {!selectedNode ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[#6e6f80]">
-          <div className="w-12 h-12 rounded-full bg-[#1b1b22] border border-[#282834] flex items-center justify-center mb-3">
-            <Layers className="w-6 h-6 text-[#525364]" />
-          </div>
-          <h4 className="text-sm font-medium text-[#a5a6b8] mb-1">No Node Selected</h4>
-          <p className="text-xs text-[#717283] leading-relaxed max-w-[220px]">
-            Click any node in the memory graph to inspect its payload, model provider, and references.
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[#9C98B8]">
+          <h4 className="text-sm font-medium text-[#EEEAF7] mb-1">No node selected</h4>
+          <p className="text-xs max-w-[32ch]">
+            Select any turn, checkpoint, or decision in the memory graph to inspect its context.
           </p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Metadata Card */}
-          <div className="p-3.5 rounded-xl bg-[#1e1e27] border border-[#272732] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-[#7d7e92] uppercase tracking-wider">
-                Node Type
-              </span>
-              <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold ${
-                  selectedNode.type === 'decision'
-                    ? 'bg-purple-950/80 text-purple-300 border border-purple-700/50'
-                    : selectedNode.type === 'checkpoint'
-                    ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-700/50'
-                    : 'bg-[#262632] text-[#c2c3d4] border border-[#363646]'
-                }`}
-              >
-                {selectedNode.type === 'decision' && <GitFork className="w-3 h-3" />}
-                {selectedNode.type === 'checkpoint' && <BookmarkCheck className="w-3 h-3" />}
-                {selectedNode.type === 'turn' && <MessageSquare className="w-3 h-3" />}
-                <span className="capitalize">{selectedNode.type}</span>
+          {/* Metadata Grid */}
+          <div className="p-3.5 rounded-lg bg-[#14122B] border border-[#2A2455] space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#9C98B8]">Model engine</span>
+              <ModelBadge model={selectedNode.model_used} size="sm" />
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#9C98B8]">Execution status</span>
+              <StatusBadge status={selectedNode.status_at_this_point} size="sm" />
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#9C98B8]">Node category</span>
+              <span className="font-mono-code text-[#EEEAF7]">
+                {selectedNode.type}
               </span>
             </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-[#7d7e92] uppercase tracking-wider">
-                Model Provider
-              </span>
-              {selectedNode.provider === null && selectedNode.status_at_this_point === 'blocked' ? (
-                <span
-                  id="model-badge-none-md"
-                  className="inline-flex items-center gap-1 font-mono font-medium rounded-md uppercase tracking-wider px-2 py-0.5 text-xs bg-slate-500/15 text-slate-300 border border-slate-400/40 shadow-xs"
-                >
-                  <HelpCircle className="w-3 h-3 text-slate-300" />
-                  <span>None</span>
-                </span>
-              ) : (
-                <ModelBadge model={selectedNode.model_used} provider={selectedNode.provider} failed_providers={selectedNode.failed_providers} size="md" />
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-[#7d7e92] uppercase tracking-wider">
-                Execution Status
-              </span>
-              <StatusBadge status={selectedNode.status_at_this_point} size="md" />
-            </div>
-
-            <div className="flex items-center justify-between pt-1 border-t border-[#252530] text-[11px] text-[#86879b]">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="w-3 h-3 text-[#646577]" /> Timestamp
-              </span>
-              <span className="font-mono text-[10px] text-[#b0b1c4]">
-                {new Date(selectedNode.timestamp).toLocaleString([], {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2A2455]">
+              <span className="text-[#9C98B8]">Recorded at</span>
+              <span className="font-mono-code text-[11px] text-[#EEEAF7]">
+                {new Date(selectedNode.timestamp).toLocaleString()}
               </span>
             </div>
           </div>
 
-          {/* Model Handoff / Failover Alert Banner */}
-          {handoffInfo && (
-            <div className="p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-200 flex items-start gap-2.5">
-              <div className="p-1 rounded bg-indigo-900/60 text-indigo-300 shrink-0 mt-0.5">
-                <AlertTriangle className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <p className="font-semibold text-indigo-200">Gateway Failover / Handoff</p>
-                <p className="text-[11px] text-indigo-300/80 leading-relaxed mt-0.5">
-                  {handoffInfo.text}
-                </p>
-              </div>
+          {/* Blocked Alert */}
+          {isBlocked && (
+            <div className="p-3 rounded-lg bg-[#2A2455] border border-rose-500/50 text-xs text-rose-200">
+              <p className="font-medium text-rose-200">Execution blocked</p>
+              <p className="text-xs text-rose-300/80 mt-1">
+                This turn encountered a policy or model halt at this step.
+              </p>
             </div>
           )}
 
-          {/* Blocked node with no provider answered */}
-          {selectedNode.status_at_this_point === 'blocked' && selectedNode.reply === null && (
-            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs text-rose-200 flex items-start gap-2.5">
-              <div className="p-1 rounded bg-rose-900/60 text-rose-300 shrink-0 mt-0.5">
-                <AlertTriangle className="w-3.5 h-3.5" />
+          {/* Failover Alert */}
+          {hasFailover && (
+            <div className="p-3 rounded-lg bg-[#2A2455] border border-[#F0A35E]/50 text-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2 h-2 rounded-full bg-[#F0A35E] glow-gpt" />
+                <span className="font-medium text-[#F0A35E]">Failover triggered</span>
               </div>
-              <div>
-                <p className="font-semibold text-rose-200">No Provider Answered</p>
-                <p className="text-[11px] text-rose-300/80 leading-relaxed mt-0.5">
-                  All providers failed: {selectedNode.failed_providers.length > 0
-                    ? selectedNode.failed_providers.join(', ')
-                    : 'unknown'}
-                  {selectedNode.failed_providers.length > 0 && ` (${selectedNode.failed_providers.length} tried)`}
-                </p>
+              <p className="text-xs text-[#EEEAF7]/85 leading-relaxed">
+                Primary provider {selectedNode.failed_providers?.join(', ')} returned rate limits. Routed to {selectedNode.model_used} without memory loss.
+              </p>
+            </div>
+          )}
+
+          {/* Checkpoint Milestone */}
+          {selectedNode.type === 'checkpoint' && (
+            <div className="p-3 rounded-lg bg-[#2A2455] border border-[#BFD4FF]/40 text-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-[#BFD4FF] font-medium">
+                <span className="w-2 h-2 rounded-full bg-[#BFD4FF] glow-gemini" />
+                <span>Colony checkpoint milestone</span>
               </div>
+              <p className="text-xs text-[#9C98B8] leading-relaxed">
+                Immutable memory snapshot. Prior turn chain is consolidated and pinned to persistent storage.
+              </p>
+            </div>
+          )}
+
+          {/* Model Handoff Alert */}
+          {isHandoff && parentNode && (
+            <div className="p-3 rounded-lg bg-[#2A2455] border border-[#BFD4FF]/40 text-xs">
+              <p className="font-medium text-[#EEEAF7]">Model handoff</p>
+              <p className="text-xs text-[#9C98B8] mt-1">
+                Handed off from {parentNode.model_used} to {selectedNode.model_used} while preserving memory state.
+              </p>
             </div>
           )}
 
           {/* Lineage & Graph Connections */}
           <div className="space-y-2">
-            <h4 className="text-[11px] font-semibold text-[#8b8ca1] uppercase tracking-wider">
-              Lineage & Relationships
+            <h4 className="text-xs font-medium text-[#9C98B8]">
+              Lineage
             </h4>
 
             {/* Parent Node */}
-            <div className="p-2.5 rounded-lg bg-[#18181e] border border-[#262632] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ArrowLeft className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-xs text-[#9a9ab0]">Parent Node (prev_id):</span>
+            <div className="p-2.5 rounded-lg bg-[#14122B] border border-[#2A2455] flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-[#9C98B8]">
+                <ArrowLeft className="w-3.5 h-3.5 text-[#BFD4FF]" />
+                <span>Parent node:</span>
               </div>
               {parentNode ? (
                 <button
                   id={`jump-to-parent-${parentNode.node_id}`}
                   onClick={() => onSelectNode(parentNode.node_id)}
-                  className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950/70 text-indigo-300 hover:bg-indigo-900/90 border border-indigo-700/40 transition-colors"
+                  className="font-mono-code text-xs px-2.5 py-0.5 rounded-full bg-[#2A2455] text-[#BFD4FF] hover:bg-[#342d6a] transition-colors"
                 >
                   #{parentNode.node_id}
                 </button>
               ) : (
-                <span className="text-xs font-mono text-[#666778] italic">null (Root)</span>
+                <span className="text-xs font-mono-code text-[#9C98B8] italic">Root node</span>
               )}
             </div>
 
             {/* Children / Branches */}
-            <div className="p-2.5 rounded-lg bg-[#18181e] border border-[#262632] space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="text-xs text-[#9a9ab0]">Next in Chain:</span>
+            <div className="p-2.5 rounded-lg bg-[#14122B] border border-[#2A2455] space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-[#9C98B8]">
+                  <ArrowRight className="w-3.5 h-3.5 text-[#BFD4FF]" />
+                  <span>Next in chain:</span>
                 </div>
-                <span className="text-[10px] font-mono text-[#77788b]">
+                <span className="font-mono-code text-xs text-[#9C98B8]">
                   {childNodes.length} {childNodes.length === 1 ? 'child' : 'branches'}
                 </span>
               </div>
@@ -304,32 +246,28 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                       key={child.node_id}
                       id={`jump-to-child-${child.node_id}`}
                       onClick={() => onSelectNode(child.node_id)}
-                      className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded bg-[#22222c] hover:bg-[#2c2c3a] text-[#c7c8d9] border border-[#333342] transition-colors"
+                      className="inline-flex items-center gap-1 font-mono-code text-xs px-2.5 py-1 rounded-full bg-[#2A2455] hover:bg-[#342d6a] text-[#EEEAF7] transition-colors"
                     >
-                      <CornerDownRight className="w-3 h-3 text-[#797a8e]" />
                       <span>#{child.node_id}</span>
-                      <span className="text-[9px] text-[#717285] uppercase">
+                      <span className="text-[10px] text-[#9C98B8]">
                         ({child.model_used})
                       </span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] text-[#636475] italic pt-0.5">
-                  Leaf node (end of this path)
+                <p className="text-xs text-[#9C98B8] italic">
+                  Leaf node (end of chain)
                 </p>
               )}
             </div>
 
             {/* Decision References */}
             {selectedNode.type === 'decision' && (
-              <div className="p-2.5 rounded-lg bg-purple-950/30 border border-purple-800/40 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-purple-300">
-                    <Link2 className="w-3.5 h-3.5 text-purple-400" />
-                    <span className="text-xs font-medium">Referenced Memory Nodes:</span>
-                  </div>
-                  <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-purple-900/60 text-purple-300">
+              <div className="p-2.5 rounded-lg bg-[#14122B] border border-[#2A2455] space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#EEEAF7]">
+                  <span>Referenced memory nodes:</span>
+                  <span className="font-mono-code text-xs text-[#E58AB0]">
                     {selectedNode.references?.length || 0}
                   </span>
                 </div>
@@ -341,51 +279,64 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                         key={refNode.node_id}
                         id={`jump-to-ref-${refNode.node_id}`}
                         onClick={() => onSelectNode(refNode.node_id)}
-                        className="w-full text-left p-2 rounded bg-[#1e152a] hover:bg-[#281b39] border border-purple-800/30 text-xs transition-colors group"
+                        className="w-full text-left p-2 rounded-md bg-[#2A2455]/50 hover:bg-[#2A2455] border border-[#2A2455] text-xs transition-colors"
                       >
                         <div className="flex items-center justify-between mb-0.5">
-                          <span className="font-mono font-semibold text-purple-300 text-[11px] group-hover:text-purple-200">
+                          <span className="font-mono-code text-xs text-[#BFD4FF]">
                             #{refNode.node_id}
                           </span>
-                          <span className="text-[9px] uppercase font-mono text-purple-400/80">
-                            {refNode.type} • {refNode.model_used}
+                          <span className="text-[10px] text-[#9C98B8]">
+                            {refNode.model_used}
                           </span>
                         </div>
-                        <p className="text-[10px] text-purple-200/70 line-clamp-1 leading-snug">
+                        <p className="text-xs text-[#9C98B8] line-clamp-1">
                           {refNode.content}
                         </p>
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-purple-400/60 italic">No node references</p>
+                  <p className="text-xs text-[#9C98B8] italic">No node references</p>
                 )}
               </div>
             )}
           </div>
 
-          {/* Full Content Payload - Prompt & Reply separately */}
-          <div className="space-y-3">
-            <h4 className="text-[11px] font-semibold text-[#8b8ca1] uppercase tracking-wider">
-              Prompt (User Message)
-            </h4>
-            <div className="p-3.5 rounded-xl bg-[#121215] border border-[#252530] font-sans text-xs text-[#d7d8e6] leading-relaxed select-text whitespace-pre-wrap">
-              {selectedNode.content}
+          {/* User Prompt */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-medium text-[#9C98B8]">
+                User instruction
+              </h4>
+              <button
+                id="copy-node-content-btn"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-[#2A2455] hover:bg-[#342d6a] text-[#EEEAF7] transition-colors"
+                title="Copy content"
+              >
+                {copied ? <Check className="w-3 h-3 text-[#BFD4FF]" /> : <Copy className="w-3 h-3" />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
             </div>
 
-            <h4 className="text-[11px] font-semibold text-[#8b8ca1] uppercase tracking-wider">
-              Model Reply
-            </h4>
-            <div className="p-3.5 rounded-xl bg-[#121215] border border-[#252530] font-sans text-xs text-[#d7d8e6] leading-relaxed select-text whitespace-pre-wrap">
-              {selectedNode.reply !== null ? (
-                selectedNode.reply
-              ) : (
-                <span className="text-rose-300/80 italic">
-                  No provider answered for this turn.
-                </span>
-              )}
+            <div className="p-3.5 rounded-lg bg-[#14122B] border border-[#2A2455] font-body text-xs text-[#EEEAF7] leading-relaxed select-text whitespace-pre-wrap">
+              {selectedNode.content}
             </div>
           </div>
+
+          {/* Assistant Reply Payload */}
+          {selectedNode.reply && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-medium text-[#9C98B8]">
+                  Assistant reply ({selectedNode.model_used})
+                </h4>
+              </div>
+              <div className="p-3.5 rounded-lg bg-[#14122B] border border-[#2A2455] font-body text-xs text-[#EEEAF7] leading-relaxed select-text whitespace-pre-wrap">
+                {selectedNode.reply}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </aside>

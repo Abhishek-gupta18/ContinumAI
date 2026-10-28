@@ -1,21 +1,18 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig} from 'vite';
+import dotenv from 'dotenv';
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const gatewayToken = env.GATEWAY_API_TOKEN || '';
+// Backend env (gateway token etc.) lives in the repo root .env.
+dotenv.config({path: path.resolve(__dirname, '../.env')});
 
-  const withGatewayAuth = (proxy: any) => {
-    proxy.on('proxyReq', (proxyReq: any) => {
-      proxyReq.removeHeader('origin');
-      if (gatewayToken) {
-        proxyReq.setHeader('Authorization', `Bearer ${gatewayToken}`);
-      }
-    });
-  };
+const backendTarget = 'http://localhost:3000';
+const gatewayAuth = {
+  Authorization: `Bearer ${process.env.GATEWAY_API_TOKEN || ''}`,
+};
 
+export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -24,14 +21,17 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Backend (root server.js) runs on :3000; keep vite clear of it.
       proxy: {
-        '/sessions': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
-        '/chat': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
-        '/health': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
-        '/providers': { target: 'http://127.0.0.1:3000', changeOrigin: false, configure: withGatewayAuth },
+        '/sessions': {target: backendTarget, headers: gatewayAuth},
+        '/chat': {target: backendTarget, headers: gatewayAuth},
+        '/providers': {target: backendTarget, headers: gatewayAuth},
       },
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
 });
