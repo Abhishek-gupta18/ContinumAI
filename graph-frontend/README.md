@@ -1,20 +1,15 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# ContinumAI Frontend
 
-# Run and deploy your AI Studio app
+Vite + React dashboard for the ContinumAI gateway (repo root).
 
-This contains everything you need to run your app locally.
+```bash
+npm install
+npm run dev     # http://localhost:5173 — proxies /chat, /sessions, /providers to gateway on :3000
+```
 
-View your app in AI Studio: https://ai.studio/apps/b7ddf41e-7ad7-4b4d-b815-282006416da5
+- Start the backend first from the repo root: `npm start` (port 3000).
+- The dev proxy injects `GATEWAY_API_TOKEN` from the repo root `.env`; the browser never sees it.
+- If the gateway is down, pages fall back to bundled mock data.
+- Routes: `/overview`, `/providers`, `/graph`, `/playground`, `/api-access`, `/activity`, `/settings`.
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Scripts: `npm run build`, `npm run lint` (tsc), `npm test`.

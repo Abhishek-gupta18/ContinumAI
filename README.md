@@ -89,10 +89,10 @@ The server refuses to start when `GATEWAY_API_TOKEN` is missing unless `ALLOW_UN
 ```bash
 cd graph-frontend
 npm install
-npm run dev             # http://localhost:5173 — proxies /chat, /sessions, /health, /providers to :3000
+npm run dev             # http://localhost:5173 — proxies /chat, /sessions, /providers to :3000
 ```
 
-The Vite dev proxy strips the browser `Origin` header and injects the gateway token (`GATEWAY_API_TOKEN` in `graph-frontend/.env`), so the backend's fail-closed CORS accepts it.
+The Vite dev proxy injects the gateway token from the **repo root `.env`** (`GATEWAY_API_TOKEN`) and strips the browser `Origin` header, so the backend's fail-closed CORS accepts it. The token stays in the dev process — it is never bundled into browser code. Backend must be running on port 3000; the frontend falls back to bundled mock data when the gateway is unreachable.
 
 ### Tests
 
@@ -179,24 +179,29 @@ continumai/
 ├── db/schema.sql           # Postgres schema (npm run migrate)
 ├── scripts/migrate.js      # applies db/schema.sql
 ├── test/                   # node:test — gateway, memory contracts, sessions
-└── graph-frontend/         # Vite + React
+└── graph-frontend/         # Vite + React dashboard (http://localhost:5173)
     └── src/
-        ├── App.tsx         # workspace: graph canvas + inspector + chat bar
-        ├── pages/          # Root (hash router), Landing, demo pages
-        ├── auth.ts         # demo-only mock auth (no backend yet)
-        ├── api/client.ts   # real data layer — /sessions, /chat
-        └── components/     # ColonyCanvasView, DetailPanel, SessionSidebar, nodes/
+        ├── App.tsx         # BrowserRouter: /overview /providers /graph /playground
+        │                   #   /api-access /activity /settings
+        ├── auth.ts         # demo-only in-memory auth + useAuth() hook (no backend yet)
+        ├── api/client.ts   # real data layer — /sessions, /sessions/:id/nodes, /chat, /providers
+        ├── pages/dashboard/ # Overview, Providers, MemoryGraph, Playground, ApiAccess,
+        │                   #   ActivityLog, Settings
+        ├── context/        # DashboardContext — providers, failover events, toasts, metrics
+        └── components/     # GraphView (React Flow), ColonyCanvasView (d3), DetailPanel,
+                            #   SessionSidebar, nodes/, layout/, landing/
 ```
 
 ## Frontend
 
-Landing page → **Open Workspace** → the memory-graph workspace:
-- **Colony canvas** — d3-force particle graph clustered around checkpoints; node color = answering provider; `decision` nodes branch, dashed edges are references.
-- **Node inspector** — prompt/reply, provider badge (OpenAI / Gemini / Claude / unknown), failover banner (`"A > B failed, C answered"` — wording only appears when `failed_providers` is non-empty), lineage jumping.
-- **Session sidebar** — persisted session list with filter, fork/count stats.
-- **Demo pages** (Sign in, Provider keys, Gateway tokens, Account) are clearly labelled **"Demo, not saved"** — no backend exists for them; typed keys are never stored anywhere.
+BrowserRouter dashboard (`http://localhost:5173`), 7 screens: **Overview**, **Providers**, **Memory Graph**, **Playground**, **API Access**, **Activity Log**, **Settings**. State lives in `DashboardContext`; global metrics/providers are still mock-driven (`data/dashboardData.ts`).
 
-Routes are hash-based: `#/` landing, `#/app` workspace, `#/demo/*` demo pages.
+Live backend wiring:
+- **Memory Graph** (`/graph`) — loads the real session list via `GET /sessions`, fetches the full memory chain per session via `GET /sessions/:id/nodes`, and renders the d3-force colony canvas. Node color = answering provider; failover banner appears when `failed_providers` is non-empty. Falls back to bundled mock sessions when the gateway is down.
+- **Playground** (`/playground`) — sends real `POST /chat` requests through the gateway with the selected routing preference; shows the actual `model_used` and measured latency, and surfaces gateway errors as toasts + inline messages.
+- Gateway token is injected server-side by the Vite proxy (see Quickstart); the browser never holds it.
+
+Landing/login demo pages from the AI Studio prototype still exist in the tree but are currently unrouted.
 
 ### Workspace — successful turn
 
