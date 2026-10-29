@@ -90,3 +90,51 @@ body {
 .glow-violet {
   box-shadow: 0 0 14px rgba(124, 92, 255, 0.4);
 }
+
+/* Calm entrance motion for the sign-in and registration screens. */
+.auth-scene {
+  background: radial-gradient(ellipse at 50% 0%, rgba(120, 194, 170, 0.12), transparent 52%), #10131a;
+  isolation: isolate;
+}
+.auth-scene::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(rgba(185, 220, 204, 0.16) 0.7px, transparent 0.7px);
+  background-size: 28px 28px;
+  content: "";
+  mask-image: linear-gradient(to bottom, black, transparent 75%);
+  opacity: 0.22;
+}
+.auth-orb {
+  position: absolute;
+  z-index: -1;
+  width: 21rem;
+  height: 21rem;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.15;
+  animation: auth-drift 12s ease-in-out infinite alternate;
+}
+.auth-orb-one { top: 8%; left: -10rem; background: #6fc5a1; }
+.auth-orb-two { right: -10rem; bottom: 4%; background: #8f9fca; animation-delay: -6s; }
+.auth-card { animation: auth-arrive 650ms cubic-bezier(.2,.75,.25,1) both; }
+.auth-brand { animation: auth-arrive 650ms 90ms cubic-bezier(.2,.75,.25,1) both; }
+.auth-form > .auth-field, .auth-form > button, .auth-form > [role="alert"] { animation: auth-arrive 500ms cubic-bezier(.2,.75,.25,1) both; }
+.auth-form > :nth-child(2) { animation-delay: 70ms; }
+.auth-form > :nth-child(3) { animation-delay: 130ms; }
+.auth-form > :nth-child(4) { animation-delay: 190ms; }
+.auth-input:focus { box-shadow: 0 0 0 4px rgba(141, 205, 180, 0.08); }
+@keyframes auth-arrive {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes auth-drift {
+  from { transform: translate3d(0, -10px, 0) scale(.96); }
+  to { transform: translate3d(25px, 24px, 0) scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-card, .auth-brand, .auth-form > .auth-field, .auth-form > button, .auth-form > [role="alert"], .auth-orb {
+    animation: none;
+  }
+}

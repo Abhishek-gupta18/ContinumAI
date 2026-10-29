@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight, LockKeyhole, Mail } from 'lucide-react';
 import { useAuth } from '../auth';
+import { AuthLayout } from '../components/AuthLayout';
 
 export const LoginPage: React.FC = () => {
-  const [email, setEmail] = useState('abhishekgupta.18052006@gmail.com');
-  const [password, setPassword] = useState('••••••••••••');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -17,95 +18,29 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-
     const res = await login(email, password);
     setSubmitting(false);
-
-    if (res.success) {
-      navigate(from, { replace: true });
-    } else {
-      setError(res.error || 'Failed to authenticate');
-    }
+    if (res.success) navigate(from, { replace: true });
+    else setError(res.error || 'Could not sign in. Please try again.');
   };
 
   return (
-    <div className="min-h-screen bg-[#14122B] text-[#EEEAF7] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-left px-4 sm:px-0">
-        <Link to="/" className="inline-flex items-center gap-2.5 mb-6">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#BFD4FF] glow-gemini" />
-          <span className="font-display font-bold text-lg text-[#EEEAF7] tracking-tight">
-            ContinumAI
-          </span>
-        </Link>
-        <h1 className="font-display font-bold text-3xl text-[#EEEAF7] tracking-tight">
-          Sign in to your account
-        </h1>
-        <p className="mt-2 text-sm text-[#9C98B8] font-body max-w-[45ch]">
-          Access your unified memory graph, provider keys, and active sessions.
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
-        <div className="bg-[#14122B] py-8 px-6 rounded-lg border border-[#2A2455] sm:px-8">
-          {error && (
-            <div className="mb-5 p-3 rounded-md bg-[#2A2455] border border-rose-500/60 text-xs text-rose-300">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-medium text-[#9C98B8] mb-1.5">
-                Email address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-md bg-[#14122B] border border-[#2A2455] text-sm text-[#EEEAF7] focus:outline-none focus:border-[#BFD4FF] transition-colors"
-                placeholder="developer@company.com"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-medium text-[#9C98B8]">
-                  Password
-                </label>
-                <Link
-                  to="/forgot-password"
-                  className="text-xs text-[#BFD4FF] hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-md bg-[#14122B] border border-[#2A2455] text-sm text-[#EEEAF7] focus:outline-none focus:border-[#BFD4FF] transition-colors"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-2.5 px-4 rounded-full text-sm font-semibold bg-[#BFD4FF] text-[#14122B] hover:bg-white disabled:opacity-50 transition-colors mt-2"
-            >
-              {submitting ? 'Authenticating...' : 'Sign in'}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-5 border-t border-[#2A2455] text-center text-xs text-[#9C98B8]">
-            Need an account?{' '}
-            <Link to="/signup" className="text-[#BFD4FF] hover:underline font-medium">
-              Create an account
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AuthLayout eyebrow="Welcome back" title="Pick up where you left off." description="Sign in and your model handoffs will be right where you left them.">
+      <form onSubmit={handleSubmit} className="auth-form mt-7 space-y-4" autoComplete="on">
+        {error && <p role="alert" className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3.5 py-3 text-xs text-rose-200">{error}</p>}
+        <label className="auth-field block">
+          <span className="mb-1.5 block text-xs font-medium text-[#c0ccca]">Email address</span>
+          <span className="relative block"><Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#82938f]" /><input type="email" name="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="auth-input w-full rounded-xl border border-[#35454a] bg-[#10171a]/80 py-3 pl-10 pr-3.5 text-sm text-[#edf3ef] placeholder:text-[#687976] outline-none transition focus:border-[#8dcdb4] focus:ring-2 focus:ring-[#8dcdb4]/15" /></span>
+        </label>
+        <label className="auth-field block">
+          <span className="mb-1.5 flex items-center justify-between text-xs font-medium text-[#c0ccca]">Password <Link to="/forgot-password" className="text-[#a9dfc8] transition hover:text-white">Forgot password?</Link></span>
+          <span className="relative block"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#82938f]" /><input type="password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" className="auth-input w-full rounded-xl border border-[#35454a] bg-[#10171a]/80 py-3 pl-10 pr-3.5 text-sm text-[#edf3ef] placeholder:text-[#687976] outline-none transition focus:border-[#8dcdb4] focus:ring-2 focus:ring-[#8dcdb4]/15" /></span>
+        </label>
+        <button type="submit" disabled={submitting} className="auth-submit group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#a9dfc8] px-4 py-3 text-sm font-semibold text-[#18251f] shadow-[0_8px_28px_rgba(127,201,168,0.15)] transition hover:-translate-y-0.5 hover:bg-[#c3ecd9] disabled:cursor-wait disabled:opacity-60">
+          {submitting ? 'Signing you in…' : 'Sign in'} {!submitting && <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />}
+        </button>
+      </form>
+      <p className="mt-6 border-t border-[#344247]/70 pt-5 text-center text-xs text-[#99a9a6]">New to ContinumAI? <Link to="/signup" className="font-semibold text-[#a9dfc8] transition hover:text-white">Create an account</Link></p>
+    </AuthLayout>
   );
 };

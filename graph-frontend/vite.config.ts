@@ -12,6 +12,17 @@ const gatewayAuth = {
   Authorization: `Bearer ${process.env.GATEWAY_API_TOKEN || ''}`,
 };
 
+function configureGatewayProxy(proxy: {
+  on: (
+    event: string,
+    listener: (proxyReq: {removeHeader: (name: string) => void}) => void,
+  ) => void;
+}) {
+  proxy.on('proxyReq', (proxyReq) => {
+    proxyReq.removeHeader('origin');
+  });
+}
+
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
@@ -23,12 +34,27 @@ export default defineConfig(() => {
     server: {
       // Backend (root server.js) runs on :3000; keep vite clear of it.
       proxy: {
-        '/sessions': {target: backendTarget, headers: gatewayAuth},
-        '/chat': {target: backendTarget, headers: gatewayAuth},
-        '/providers': {target: backendTarget, headers: gatewayAuth},
+        '/sessions': {
+          target: backendTarget,
+          headers: gatewayAuth,
+          changeOrigin: true,
+          configure: configureGatewayProxy,
+        },
+        '/chat': {
+          target: backendTarget,
+          headers: gatewayAuth,
+          changeOrigin: true,
+          configure: configureGatewayProxy,
+        },
+        '/providers': {
+          target: backendTarget,
+          headers: gatewayAuth,
+          changeOrigin: true,
+          configure: configureGatewayProxy,
+        },
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
