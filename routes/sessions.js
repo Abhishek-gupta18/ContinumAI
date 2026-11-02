@@ -6,8 +6,9 @@ function validateSessionId(sessionId) {
 
 function createSessionsRouter(memory) {
   async function listSessions(req, res) {
+    const mem = typeof memory.forUser === 'function' ? memory.forUser(req.user?.id ?? null) : memory;
     try {
-      const sessions = await memory.listSessions();
+      const sessions = await mem.listSessions();
       return res.status(200).json({ sessions });
     } catch (err) {
       console.error('[memory] listSessions failed:', err.message, err.code ?? '');
@@ -29,7 +30,8 @@ function createSessionsRouter(memory) {
     }
 
     try {
-      const nodes = await memory.getSessionNodes(id);
+      const mem = typeof memory.forUser === 'function' ? memory.forUser(req.user?.id ?? null) : memory;
+      const nodes = await mem.getSessionNodes(id);
       if (nodes === null) {
         return res.status(404).json({
           error: { type: 'not_found', message: 'Session not found' },

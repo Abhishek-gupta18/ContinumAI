@@ -16,25 +16,21 @@ function timingSafeEqualStrings(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function createAuthMiddleware(apiToken) {
-  return (req, res, next) => {
+function createDefaultAuthenticate(apiToken) {
+  return async (req) => {
     if (!(typeof apiToken === 'string' && apiToken.length > 0)) {
-      return next();
+      return { id: null };
     }
 
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: { type: 'unauthorized', message: 'Missing or invalid token' },
-      });
+      return null;
     }
     const token = auth.slice('Bearer '.length);
     if (!timingSafeEqualStrings(token, apiToken)) {
-      return res.status(401).json({
-        error: { type: 'unauthorized', message: 'Missing or invalid token' },
-      });
+      return null;
     }
-    return next();
+    return { id: null };
   };
 }
 
@@ -94,7 +90,25 @@ function createApp(options = {}) {
     return next();
   });
 
-  const requireAuth = createAuthMiddleware(apiToken);
+  const authenticate = options.authenticate || createDefaultAuthenticate(apiToken);
+
+  const requireAuth = async (req, res, next) => {
+    let user;
+    try {
+      user = await authenticate(req);
+    } catch (err) {
+      return res.status(503).json({
+        error: { type: 'auth_unavailable', message: 'Authentication service unavailable' },
+      });
+    }
+    if (user === null) {
+      return res.status(401).json({
+        error: { type: 'unauthorized', message: 'Missing or invalid token' },
+      });
+    }
+    req.user = { id: user.id, source: user.source ?? 'legacy' };
+    return next();
+  };
   const sessionsRouter = createSessionsRouter(memory);
   app.use('/chat', requireAuth);
   app.use('/sessions', requireAuth);
@@ -103,6 +117,9 @@ function createApp(options = {}) {
   app.post("/chat", createChatHandler(providers, memory, { providerTimeoutMs }));
   app.get("/providers", requireAuth, (req, res) => {
     res.status(200).json({ providers: providers.map((p) => p.name) });
+  });
+  app.get("/me", requireAuth, (req, res) => {
+    res.status(200).json({ id: req.user.id, source: req.user.source });
   });
   app.get("/sessions", sessionsRouter.listSessions);
   app.get("/sessions/:id/nodes", sessionsRouter.getSessionNodes);
@@ -133,10 +150,27 @@ if (require.main === module) {
     process.exit(1);
   }
 
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const hasToken = typeof process.env.GATEWAY_API_TOKEN === 'string' && process.env.GATEWAY_API_TOKEN.length > 0;
   const allowUnauth = process.env.ALLOW_UNAUTHENTICATED === 'true';
-  if (!hasToken && !allowUnauth) {
-    console.error('GATEWAY_API_TOKEN is not set. Set GATEWAY_API_TOKEN or ALLOW_UNAUTHENTICATED=true (dev only) to start.');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const hasSupabaseUrl = typeof supabaseUrl === 'string' && supabaseUrl.length > 0;
+  const hasSupabaseKey = typeof supabaseAnonKey === 'string' && supabaseAnonKey.length > 0;
+  if (hasSupabaseUrl !== hasSupabaseKey) {
+    console.error('SUPABASE_URL and SUPABASE_ANON_KEY must both be set or both be empty.');
+    process.exit(1);
+  }
+  const ownerUserId = process.env.OWNER_USER_ID || null;
+  if (ownerUserId !== null && !UUID.test(ownerUserId)) {
+    console.error('OWNER_USER_ID must be empty or a valid UUID.');
+    process.exit(1);
+  }
+  if (!hasToken && !hasSupabaseKey && !allowUnauth) {
+    console.error(
+      'GATEWAY_API_TOKEN is not set. Set GATEWAY_API_TOKEN or ALLOW_UNAUTHENTICATED=true (dev only) to start, or configure Supabase authentication (SUPABASE_URL + SUPABASE_ANON_KEY).'
+    );
     process.exit(1);
   }
 
@@ -153,7 +187,26 @@ if (require.main === module) {
     console.log('memory backend: file');
   }
 
-  const app = createApp({ memory });
+  const appOptions = { memory };
+  if (hasSupabaseKey) {
+    try {
+      const { createSupabaseAuthenticator, createCombinedAuthenticate } = require('./auth/authenticators');
+      appOptions.authenticate = createCombinedAuthenticate({
+        legacyToken: process.env.GATEWAY_API_TOKEN,
+        ownerUserId,
+        disableLegacy: process.env.DISABLE_LEGACY_TOKEN === 'true',
+        supabase: createSupabaseAuthenticator({
+          supabaseUrl: supabaseUrl,
+          anonKey: supabaseAnonKey,
+        }),
+      });
+    } catch (err) {
+      console.error(`Invalid Supabase configuration: ${err.message}`);
+      process.exit(1);
+    }
+  }
+
+  const app = createApp(appOptions);
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
     console.log(`ContinumAI gateway running on port ${port}`);

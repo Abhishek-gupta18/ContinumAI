@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test --test-concurrency=1 test/*.test.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "claim-legacy": "node scripts/claim-legacy.js"
   },
   "engines": {
     "node": ">=22"

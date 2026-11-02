@@ -1506,3 +1506,110 @@ test('F5: GET /providers returns names/status only — no secrets, keys, or URLs
   assert.ok(!/http:\/\/|https:\/\//.test(json), 'no URLs in /providers response');
   assert.ok(!json.includes('sk-'), 'no keys in /providers response');
 });
+
+// ---- W-series: per-user scoping via the authenticate hook ----
+
+const USER_A = '33333333-3333-4333-8333-333333333333';
+const USER_B = '44444444-4444-4444-8444-444444444444';
+
+test('W1: authenticate-scoped memory: two users share a session id without seeing each other', async (t) => {
+  useTempSessionsDir(t);
+
+  const providers = [{ name: 'fake', send: async (req) => makeSuccess(`reply to: ${req.message}`, 'fake-model') }];
+  const authenticate = async (req) => {
+    const token = (req.headers.authorization || '').slice('Bearer '.length);
+    if (token === 'tokA') return { id: USER_A };
+    if (token === 'tokB') return { id: USER_B };
+    return null;
+  };
+  const app = createApp({ providers, apiToken: null, authenticate });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+  const { port } = server.address();
+  const base = `http://127.0.0.1:${port}`;
+  const chat = (token, message) => fetch(`${base}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ session_id: 'shared', message }),
+  });
+
+  // A chats in session "shared"
+  const resA = await chat('tokA', 'a only text alpha');
+  assert.strictEqual(resA.status, 200);
+  await resA.json();
+
+  // B's GET /sessions does not list it
+  const listB = await fetch(`${base}/sessions`, { headers: { Authorization: 'Bearer tokB' } });
+  assert.strictEqual(listB.status, 200);
+  const listBBody = await listB.json();
+  assert.ok(
+    !listBBody.sessions.some((s) => s.id === 'shared'),
+    `B's session list must not contain A's "shared": ${JSON.stringify(listBBody)}`
+  );
+
+  // B's GET /sessions/shared/nodes -> unknown-session response, no A text in body
+  const nodesB = await fetch(`${base}/sessions/shared/nodes`, { headers: { Authorization: 'Bearer tokB' } });
+  assert.strictEqual(nodesB.status, 404);
+  const nodesBBody = await nodesB.json();
+  assert.strictEqual(nodesBBody.error.type, 'not_found', `unknown-session response required, got: ${JSON.stringify(nodesBBody)}`);
+  const nodesBJson = JSON.stringify(nodesBBody);
+  assert.ok(!nodesBJson.includes('a only text alpha'), `A text must not leak to B: ${JSON.stringify(nodesBJson)}`);
+
+  // B creates its own "shared" session with different content
+  const resB = await chat('tokB', 'b only text beta');
+  assert.strictEqual(resB.status, 200);
+  await resB.json();
+
+  // A still sees only A's nodes
+  const nodesA = await fetch(`${base}/sessions/shared/nodes`, { headers: { Authorization: 'Bearer tokA' } });
+  assert.strictEqual(nodesA.status, 200);
+  const nodesABody = await nodesA.json();
+  const nodesAJson = JSON.stringify(nodesABody);
+  assert.ok(nodesAJson.includes('a only text alpha'), `A must still see its own node: ${JSON.stringify(nodesABody)}`);
+  assert.ok(!nodesAJson.includes('b only text beta'), `A must not see B's node: ${JSON.stringify(nodesABody)}`);
+});
+
+test('W2: with custom authenticate, request without a token -> 401', async (t) => {
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const authenticate = async (req) => {
+    const token = (req.headers.authorization || '').slice('Bearer '.length);
+    if (token === 'tokA') return { id: USER_A };
+    return null;
+  };
+  const app = createApp({ providers, apiToken: null, authenticate });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'w2', message: 'hello' }),
+  });
+  assert.strictEqual(res.status, 401);
+  assert.strictEqual((await res.json()).error.type, 'unauthorized');
+});
+
+test('W3: an authenticate that throws -> 503 auth_unavailable', async (t) => {
+  const providers = [{ name: 'fake', send: async () => makeSuccess('ok', 'fake-model') }];
+  const app = createApp({
+    providers,
+    apiToken: null,
+    authenticate: async () => { throw new Error('auth backend down'); },
+  });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    t.after(() => { s.close(); s.closeAllConnections(); });
+  });
+
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: 'w3', message: 'hello' }),
+  });
+  assert.strictEqual(res.status, 503);
+  const body = await res.json();
+  assert.strictEqual(body.error.type, 'auth_unavailable');
+  assert.strictEqual(body.error.message, 'Authentication service unavailable');
+});

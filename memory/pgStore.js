@@ -1,6 +1,16 @@
 const { randomUUID } = require('crypto');
 
 const VALID_SCHEMA = /^[a-z_][a-z0-9_]*$/;
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateUserId(userId) {
+  if (userId !== null && typeof userId !== 'string') {
+    throw new TypeError('userId must be null or a UUID string');
+  }
+  if (typeof userId === 'string' && !USER_ID.test(userId)) {
+    throw new TypeError('userId must be null or a UUID string');
+  }
+}
 
 function mapRow(row) {
   return {
@@ -26,23 +36,29 @@ function createPgStore({ pool, schema = 'continumai' }) {
 
   const q = (sql, params) => pool.query(sql, params);
 
-  async function getTail(sessionId) {
+  async function getTail(userId, sessionId) {
+    validateUserId(userId);
     const res = await q(
-      `select * from ${schema}.nodes where session_id = $1 and seq >= coalesce((select max(seq) from ${schema}.nodes where session_id = $1 and type = 'checkpoint'), 0) order by seq`,
-      [sessionId]
+      `select * from ${schema}.nodes
+         where session_id = $2 and user_id is not distinct from $1
+           and seq >= coalesce((select max(seq) from ${schema}.nodes where session_id = $2 and user_id is not distinct from $1 and type = 'checkpoint'), 0)
+         order by seq`,
+      [userId, sessionId]
     );
     return res.rows.map(mapRow);
   }
 
-  async function appendNodes(sessionId, nodes) {
+  async function appendNodes(userId, sessionId, nodes) {
+    validateUserId(userId);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       for (const node of nodes) {
         await client.query(
-          `insert into ${schema}.nodes (node_id, session_id, prev_id, type, content, reply, model_used, status_at_this_point, refs, provider, failed_providers, created_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          `insert into ${schema}.nodes (user_id, node_id, session_id, prev_id, type, content, reply, model_used, status_at_this_point, refs, provider, failed_providers, created_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [
+            userId,
             node.node_id,
             sessionId,
             node.prev_id,
@@ -67,35 +83,38 @@ function createPgStore({ pool, schema = 'continumai' }) {
     }
   }
 
-  async function getAllNodes(sessionId) {
+  async function getAllNodes(userId, sessionId) {
+    validateUserId(userId);
     const res = await q(
-      `select * from ${schema}.nodes where session_id = $1 order by seq`,
-      [sessionId]
+      `select * from ${schema}.nodes where session_id = $2 and user_id is not distinct from $1 order by seq`,
+      [userId, sessionId]
     );
     return res.rows.map(mapRow);
   }
 
-  async function getSessionNodes(sessionId) {
+  async function getSessionNodes(userId, sessionId) {
+    validateUserId(userId);
     const res = await q(
-      `select * from ${schema}.nodes where session_id = $1 order by seq`,
-      [sessionId]
+      `select * from ${schema}.nodes where session_id = $2 and user_id is not distinct from $1 order by seq`,
+      [userId, sessionId]
     );
     if (res.rows.length === 0) {
       const sessionRes = await q(
-        `select 1 from ${schema}.nodes where session_id = $1 limit 1`,
-        [sessionId]
+        `select 1 from ${schema}.nodes where session_id = $2 and user_id is not distinct from $1 limit 1`,
+        [userId, sessionId]
       );
       return sessionRes.rows.length === 0 ? null : [];
     }
     return res.rows.map(mapRow);
   }
 
-  async function listSessions() {
+  async function listSessions(userId) {
+    validateUserId(userId);
     const res = await q(
       `with first_turns as (
          select distinct on (session_id) session_id, content
          from ${schema}.nodes
-         where type = 'turn'
+         where type = 'turn' and user_id is not distinct from $1
          order by session_id, seq
        )
        select n.session_id as id,
@@ -105,8 +124,10 @@ function createPgStore({ pool, schema = 'continumai' }) {
               coalesce(ft.content, '') as title
          from ${schema}.nodes n
          left join first_turns ft on ft.session_id = n.session_id
+        where n.user_id is not distinct from $1
         group by n.session_id, ft.content
         order by max(n.created_at) desc nulls last, n.session_id`,
+      [userId]
     );
     return res.rows.map((row) => ({
       id: row.id,
@@ -119,10 +140,11 @@ function createPgStore({ pool, schema = 'continumai' }) {
     }));
   }
 
-  async function getHead(sessionId) {
+  async function getHead(userId, sessionId) {
+    validateUserId(userId);
     const res = await q(
-      `select node_id from ${schema}.nodes where session_id = $1 order by seq desc limit 1`,
-      [sessionId]
+      `select node_id from ${schema}.nodes where session_id = $2 and user_id is not distinct from $1 order by seq desc limit 1`,
+      [userId, sessionId]
     );
     return res.rows[0]?.node_id ?? null;
   }

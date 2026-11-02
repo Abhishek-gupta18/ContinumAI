@@ -42,6 +42,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
   const providerTimeoutMs = options.providerTimeoutMs ?? getProviderTimeoutMs();
   const requestDeadlineMs = options.requestDeadlineMs ?? getRequestDeadlineMs();
   return async function handleChatRequest(req, res) {
+    const mem = typeof memory.forUser === 'function' ? memory.forUser(req.user?.id ?? null) : memory;
     const normalizedRequest = req.body;
 
     if (!normalizedRequest || !normalizedRequest.session_id || !normalizedRequest.message) {
@@ -105,7 +106,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
 
     let contextText;
     try {
-      contextText = await memory.buildContextText(session_id);
+      contextText = await mem.buildContextText(session_id);
     } catch (err) {
       console.error('[memory] buildContextText failed:', err.message, err.code ?? '');
       return res.status(503).json({
@@ -130,7 +131,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
 
     const recordBlocked = async (resHdr) => {
       try {
-        await memory.appendNode(session_id, {
+        await mem.appendNode(session_id, {
           type: "turn",
           content: message,
           reply: null,
@@ -170,7 +171,7 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
         );
 
         try {
-          await memory.appendNode(session_id, {
+          await mem.appendNode(session_id, {
             type: "turn",
             content: message,
             reply: result.data.reply,

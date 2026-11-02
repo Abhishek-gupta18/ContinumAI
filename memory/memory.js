@@ -39,9 +39,15 @@ function cleanupQueue(sessionId) {
 }
 
 function createMemory(store) {
-  async function appendNode(sessionId, nodeFields) {
-    return runSerialized(sessionId, async () => {
-      const tail = await store.getTail(sessionId);
+  function bindUser(userId) {
+    const queueKey = (sessionId) => `${userId ?? ''}:${sessionId}`;
+
+    async function appendNode(sessionId, nodeFields) {
+      return runSerialized(queueKey(sessionId), () => appendNodeInner(sessionId, nodeFields));
+    }
+
+    async function appendNodeInner(sessionId, nodeFields) {
+      const tail = await store.getTail(userId, sessionId);
       let prevId = null;
       const nodesToAppend = [];
 
@@ -96,49 +102,53 @@ function createMemory(store) {
       };
 
       nodesToAppend.push(node);
-      await store.appendNodes(sessionId, nodesToAppend);
-      cleanupQueue(sessionId);
+      await store.appendNodes(userId, sessionId, nodesToAppend);
+      cleanupQueue(queueKey(sessionId));
       return node;
-    });
+    }
+
+    async function getContextForHandoff(sessionId) {
+      return store.getTail(userId, sessionId);
+    }
+
+    async function buildContextText(sessionId) {
+      const nodes = await store.getTail(userId, sessionId);
+      return nodes
+        .map((node) => formatNodeText(node))
+        .filter((text) => text !== null)
+        .join('\n');
+    }
+
+    async function getAllNodes(sessionId) {
+      return store.getAllNodes(userId, sessionId);
+    }
+
+    async function getSessionNodes(sessionId) {
+      return store.getSessionNodes(userId, sessionId);
+    }
+
+    async function listSessions() {
+      return store.listSessions(userId);
+    }
+
+    async function getHead(sessionId) {
+      return store.getHead(userId, sessionId);
+    }
+
+    return {
+      appendNode,
+      getContextForHandoff,
+      buildContextText,
+      getAllNodes,
+      getSessionNodes,
+      listSessions,
+      getHead,
+    };
   }
 
-  async function getContextForHandoff(sessionId) {
-    return store.getTail(sessionId);
-  }
-
-  async function buildContextText(sessionId) {
-    const nodes = await store.getTail(sessionId);
-    return nodes
-      .map((node) => formatNodeText(node))
-      .filter((text) => text !== null)
-      .join('\n');
-  }
-
-  async function getAllNodes(sessionId) {
-    return store.getAllNodes(sessionId);
-  }
-
-  async function getSessionNodes(sessionId) {
-    return store.getSessionNodes(sessionId);
-  }
-
-  async function listSessions() {
-    return store.listSessions();
-  }
-
-  async function getHead(sessionId) {
-    return store.getHead(sessionId);
-  }
-
-  return {
-    appendNode,
-    getContextForHandoff,
-    buildContextText,
-    getAllNodes,
-    getSessionNodes,
-    listSessions,
-    getHead,
-  };
+  const memory = bindUser(null);
+  memory.forUser = bindUser;
+  return memory;
 }
 
 module.exports = { createMemory, formatNodeText };

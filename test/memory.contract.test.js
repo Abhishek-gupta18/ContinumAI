@@ -402,7 +402,7 @@ function runMemoryContract(label, makeStore) {
       references: null,
       timestamp: new Date().toISOString(),
     };
-    await store.appendNodes(sessionId, [legacyNode]);
+    await store.appendNodes(null, sessionId, [legacyNode]);
 
     const nodes = await memory.getSessionNodes(sessionId);
     assert.strictEqual(nodes[0].provider, null, 'legacy node should have provider null');
@@ -467,12 +467,55 @@ function runMemoryContract(label, makeStore) {
       references: null,
       timestamp: new Date().toISOString(),
     };
-    await store.appendNodes(sessionId, [cpNode]);
+    await store.appendNodes(null, sessionId, [cpNode]);
 
     const sessions = await memory.listSessions();
     const session = sessions.find(s => s.id === sessionId);
     assert.ok(session, 'session should be listed');
     assert.strictEqual(session.title, '', 'session with no turns should have empty title');
+  });
+
+  test(`${label}: C8b - per-user scoping: same session id, users A/B/null never see each other`, async () => {
+    const store = makeStore();
+    const userA = '11111111-1111-4111-8111-111111111111';
+    const userB = '22222222-2222-4222-8222-222222222222';
+    const sessionId = 'c8b-user-shared';
+
+    const memA = createMemory(store).forUser(userA);
+    const memB = createMemory(store).forUser(userB);
+    const memN = createMemory(store).forUser(null);
+
+    for (let i = 1; i <= 3; i++) {
+      await memA.appendNode(sessionId, { type: 'turn', content: `a text ${i}`, reply: `a reply ${i}`, model_used: 'm', status_at_this_point: 'done' });
+    }
+    for (let i = 1; i <= 2; i++) {
+      await memB.appendNode(sessionId, { type: 'turn', content: `b text ${i}`, reply: `b reply ${i}`, model_used: 'm', status_at_this_point: 'done' });
+    }
+    await memN.appendNode(sessionId, { type: 'turn', content: 'n text 1', reply: 'n reply 1', model_used: 'm', status_at_this_point: 'done' });
+
+    const nodesA = await memA.getSessionNodes(sessionId);
+    const nodesB = await memB.getSessionNodes(sessionId);
+    const nodesN = await memN.getSessionNodes(sessionId);
+    assert.strictEqual(nodesA.length, 3, 'user A must see 3 of its own nodes');
+    assert.strictEqual(nodesB.length, 2, 'user B must see 2 of its own nodes');
+    assert.strictEqual(nodesN.length, 1, 'null user must see 1 of its own nodes');
+
+    const textA = await memA.buildContextText(sessionId);
+    assert.ok(textA.includes('a text 1'), `A context must contain A text: ${JSON.stringify(textA)}`);
+    assert.ok(!textA.includes('b text'), `A context must never contain B text: ${JSON.stringify(textA)}`);
+    assert.ok(!textA.includes('n text'), `A context must never contain null-user text: ${JSON.stringify(textA)}`);
+
+    const sessionsA = await memA.listSessions();
+    const sessionsB = await memB.listSessions();
+    const sessionsN = await memN.listSessions();
+    assert.deepStrictEqual(sessionsA.map((s) => s.id), [sessionId], `A session list: ${JSON.stringify(sessionsA)}`);
+    assert.deepStrictEqual(sessionsB.map((s) => s.id), [sessionId], `B session list: ${JSON.stringify(sessionsB)}`);
+    assert.ok(sessionsN.some((s) => s.id === sessionId), `null session list must contain the shared session: ${JSON.stringify(sessionsN.map((s) => s.id))}`);
+    assert.strictEqual(sessionsA.find((s) => s.id === sessionId).node_count, 3);
+    assert.strictEqual(sessionsB.find((s) => s.id === sessionId).node_count, 2);
+    assert.strictEqual(sessionsN.find((s) => s.id === sessionId).node_count, 1);
+
+    await assert.rejects(() => createMemory(store).forUser('../x').listSessions(), TypeError);
   });
 }
 

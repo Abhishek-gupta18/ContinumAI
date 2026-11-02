@@ -33,3 +33,7 @@ begin
         execute format('revoke all on all tables in schema continumai from %I', r.rolname);
     end loop;
 end $$;
+
+alter table continumai.nodes add column if not exists user_id uuid;
+
+create index if not exists nodes_user_session_idx on continumai.nodes (user_id, session_id, seq);
