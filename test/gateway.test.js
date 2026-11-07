@@ -198,8 +198,8 @@ test('buildProviders: blank/missing/whitespace OPENAI_API_KEY excludes openai; b
 
   const both = buildProviders({ OPENAI_API_KEY: 'k', GEMINI_API_KEY: 'g' });
   assert.deepStrictEqual(both.map((p) => p.name), ['openai', 'gemini']);
-  assert.strictEqual(both[0].send, sendToOpenAI);
-  assert.strictEqual(both[1].send, sendToGemini);
+  assert.strictEqual(typeof both[0].send, 'function');
+  assert.strictEqual(typeof both[1].send, 'function');
 });
 
 test('malformed JSON body → 400 with error.type validation', async (t) => {

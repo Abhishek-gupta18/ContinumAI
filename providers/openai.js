@@ -50,4 +50,53 @@ async function sendToOpenAI(normalizedRequest) {
   }
 }
 
-module.exports = { sendToOpenAI };
+function createOpenAIProvider({ name = "openai", apiKey, model = "gpt-3.5-turbo", timeoutMs = getProviderTimeoutMs(), clientFactory }) {
+  if (typeof apiKey !== "string" || apiKey.trim() === "") {
+    throw new TypeError("apiKey is required");
+  }
+  const OpenAI = require("openai");
+  let cachedClient = null;
+
+  function getClient() {
+    if (!cachedClient) {
+      cachedClient = clientFactory
+        ? clientFactory({ apiKey, maxRetries: 0, timeout: timeoutMs })
+        : new OpenAI({ apiKey, maxRetries: 0, timeout: timeoutMs });
+    }
+    return cachedClient;
+  }
+
+  async function send(normalizedRequest) {
+    const { session_id, message } = normalizedRequest;
+
+    console.log(`[openai] Sending request for session ${session_id}`);
+
+    try {
+      const response = await getClient().chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: "You are a helpful assistant." },
+          { role: "user", content: message },
+        ],
+      });
+
+      const normalizedResponse = {
+        session_id,
+        reply: response.choices[0]?.message?.content || "",
+        model_used: response.model || "unknown",
+        raw_provider_response: response,
+      };
+
+      console.log(`[openai] Request ${session_id} completed successfully`);
+
+      return { success: true, data: normalizedResponse };
+    } catch (error) {
+      const structuredError = classifyError(error.status, error);
+      return { success: false, error: structuredError };
+    }
+  }
+
+  return { name, kind: "openai", model, send };
+}
+
+module.exports = { sendToOpenAI, createOpenAIProvider };

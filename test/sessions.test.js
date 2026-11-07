@@ -171,5 +171,5 @@ test('CORS allows configured origins and rejects unapproved origins', async (t) 
     },
   });
   assert.strictEqual(preflight.status, 204);
-  assert.strictEqual(preflight.headers.get('access-control-allow-methods'), 'GET, POST, OPTIONS');
+  assert.strictEqual(preflight.headers.get('access-control-allow-methods'), 'GET, POST, PUT, DELETE, OPTIONS');
 });

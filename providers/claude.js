@@ -45,4 +45,53 @@ async function sendToClaude(normalizedRequest) {
   }
 }
 
-module.exports = { sendToClaude };
+function createClaudeProvider({ name = "claude", apiKey, model = "claude-3-5-sonnet-20240620", timeoutMs = 30000, clientFactory }) {
+  if (typeof apiKey !== "string" || apiKey.trim() === "") {
+    throw new TypeError("apiKey is required");
+  }
+  let cachedClient = null;
+
+  function getClient() {
+    if (!cachedClient) {
+      const { Anthropic } = require("@anthropic-ai/sdk");
+      cachedClient = clientFactory
+        ? clientFactory({ apiKey })
+        : new Anthropic({ apiKey });
+    }
+    return cachedClient;
+  }
+
+  async function send(normalizedRequest) {
+    const { session_id, message } = normalizedRequest;
+
+    console.log(`[claude] Sending request for session ${session_id}`);
+
+    try {
+      const response = await getClient().messages.create({
+        model,
+        max_tokens: 1000,
+        messages: [
+          { role: "user", content: message },
+        ],
+      });
+
+      const normalizedResponse = {
+        session_id,
+        reply: response.content[0].type === "text" ? response.content[0].text : "",
+        model_used: response.model || "unknown",
+        raw_provider_response: response,
+      };
+
+      console.log(`[claude] Request ${session_id} completed successfully`);
+
+      return { success: true, data: normalizedResponse };
+    } catch (error) {
+      const structuredError = classifyError(error.status, error);
+      return { success: false, error: structuredError };
+    }
+  }
+
+  return { name, kind: "claude", model, send };
+}
+
+module.exports = { sendToClaude, createClaudeProvider };

@@ -73,7 +73,32 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
       });
     }
 
-    if (!providers || providers.length === 0) {
+    let activeProviders;
+    if (typeof options.resolveProviders === 'function') {
+      try {
+        activeProviders = await options.resolveProviders(req.user?.id ?? null, req);
+      } catch {
+        console.warn("[providers] provider configuration unavailable");
+        return res.status(503).json({
+          error: {
+            type: "providers_unavailable",
+            message: "Provider configuration is unavailable",
+          },
+        });
+      }
+      if (activeProviders.length === 0) {
+        return res.status(503).json({
+          error: {
+            type: "no_providers",
+            message: "No providers are configured for this account",
+          },
+        });
+      }
+    } else {
+      activeProviders = providers;
+    }
+
+    if (!activeProviders || activeProviders.length === 0) {
       return res.status(503).json({
         error: {
           type: "no_providers",
@@ -85,23 +110,23 @@ function createChatHandler(providers = buildProviders(), memory = defaultMemory,
     // Optional per-request provider preference: try the requested provider
     // first, then fail over through the rest of the chain.
     const requestedProvider = normalizedRequest.provider;
-    let chain = providers;
+    let chain = activeProviders;
     if (requestedProvider !== undefined && requestedProvider !== null) {
       if (typeof requestedProvider !== 'string') {
         return res.status(400).json({
           error: { type: "validation", message: "provider must be a string" },
         });
       }
-      const preferred = providers.find((p) => p.name === requestedProvider);
+      const preferred = activeProviders.find((p) => p.name === requestedProvider);
       if (!preferred) {
         return res.status(400).json({
           error: {
             type: "validation",
-            message: `Unknown provider "${requestedProvider}". Available: ${providers.map((p) => p.name).join(", ")}`,
+            message: `Unknown provider "${requestedProvider}". Available: ${activeProviders.map((p) => p.name).join(", ")}`,
           },
         });
       }
-      chain = [preferred, ...providers.filter((p) => p !== preferred)];
+      chain = [preferred, ...activeProviders.filter((p) => p !== preferred)];
     }
 
     let contextText;

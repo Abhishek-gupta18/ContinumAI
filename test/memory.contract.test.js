@@ -250,6 +250,54 @@ function runMemoryContract(label, makeStore) {
     assert.ok(!textB.includes('A1') && !textB.includes('A2'));
   });
 
+  test(`${label}: C7b - checkpoint status: 5th turn blocked, 6th turn done -> checkpoint status 'done'`, async () => {
+    const store = makeStore();
+    const memory = createMemory(store);
+    const sessionId = 'c7b-cp-status';
+
+    for (let i = 1; i <= 4; i++) {
+      await memory.appendNode(sessionId, {
+        type: 'turn',
+        content: `turn ${i}`,
+        reply: `reply ${i}`,
+        model_used: 'fake-model',
+        status_at_this_point: 'done',
+      });
+    }
+
+    await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'blocked turn',
+      reply: null,
+      model_used: 'unknown',
+      status_at_this_point: 'blocked',
+    });
+
+    await memory.appendNode(sessionId, {
+      type: 'turn',
+      content: 'turn 6',
+      reply: 'reply 6',
+      model_used: 'fake-model',
+      status_at_this_point: 'done',
+    });
+
+    const allNodes = await memory.getAllNodes(sessionId);
+    const checkpoints = allNodes.filter((n) => n.type === 'checkpoint');
+    const turns = allNodes.filter((n) => n.type === 'turn');
+    assert.strictEqual(checkpoints.length, 1, 'expected exactly one checkpoint');
+    assert.strictEqual(turns.length, 6, 'expected exactly six turns');
+
+    const cp = checkpoints[0];
+    assert.strictEqual(cp.status_at_this_point, 'done', 'checkpoint status must be done, not blocked');
+
+    const text = await memory.buildContextText(sessionId);
+    for (let i = 1; i <= 4; i++) {
+      assert.ok(text.includes(`User: turn ${i}\n`), `context must contain turn ${i}`);
+    }
+    assert.ok(!text.includes('blocked turn'), 'blocked turn must be excluded from context');
+    assert.ok(text.includes('User: turn 6\n'), 'context must contain turn 6');
+  });
+
   test(`${label}: C7 - multi-checkpoint: 16 exchanges, 3 checkpoints, latest-checkpoint tail`, async () => {
     const store = makeStore();
     const memory = createMemory(store);

@@ -53,4 +53,52 @@ async function sendToGemini(normalizedRequest) {
   }
 }
 
-module.exports = { sendToGemini, classifyGeminiError };
+function createGeminiProvider({ name = "gemini", apiKey, model = "gemini-3.6-flash", timeoutMs = getProviderTimeoutMs(), clientFactory }) {
+  if (typeof apiKey !== "string" || apiKey.trim() === "") {
+    throw new TypeError("apiKey is required");
+  }
+  let cachedClient = null;
+
+  function getClient() {
+    if (!cachedClient) {
+      cachedClient = clientFactory
+        ? clientFactory({ apiKey })
+        : new GoogleGenAI({ apiKey });
+    }
+    return cachedClient;
+  }
+
+  async function send(normalizedRequest) {
+    const { session_id, message } = normalizedRequest;
+
+    console.log(`[gemini] Sending request for session ${session_id}`);
+
+    try {
+      const result = await getClient().models.generateContent({
+        model,
+        contents: message,
+        config: {
+          httpOptions: {
+            timeout: timeoutMs,
+          },
+        },
+      });
+      const normalizedResponse = {
+        session_id,
+        reply: result.candidates?.[0]?.content?.parts?.[0]?.text || result.response?.text() || "",
+        model_used: result.modelVersion || "unknown",
+        raw_provider_response: result,
+      };
+
+      console.log(`[gemini] Request ${session_id} completed successfully`);
+
+      return { success: true, data: normalizedResponse };
+    } catch (error) {
+      return { success: false, error: classifyGeminiError(error) };
+    }
+  }
+
+  return { name, kind: "gemini", model, send };
+}
+
+module.exports = { sendToGemini, classifyGeminiError, createGeminiProvider };

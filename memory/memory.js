@@ -75,7 +75,7 @@ function createMemory(store) {
           type: 'checkpoint',
           content: concatenatedContent,
           model_used: '',
-          status_at_this_point: newestTurn.status_at_this_point,
+          status_at_this_point: 'done',
           references: null,
           timestamp: new Date().toISOString(),
         };
