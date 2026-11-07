@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
-import { MOCK_SESSIONS } from '../../data/mockSessions';
-import { Session } from '../../types';
+import { getSessions, getSessionNodes } from '../../api/client';
+import { Session, MemoryNode, SessionSummary } from '../../types';
+import { toGraphSession } from '../../utils/sessionAdapter';
 import { PROVIDER_THEMES } from '../../data/dashboardData';
 import { ProviderId } from '../../types/dashboard';
 import {
@@ -10,6 +11,10 @@ import {
   Milestone,
   Clock,
   AlertOctagon,
+  Cpu,
+  RefreshCw,
+  Inbox,
+  Loader2,
 } from 'lucide-react';
 
 import { GraphView } from '../../components/GraphView';
@@ -18,6 +23,17 @@ export const MemoryGraphPage: React.FC = () => {
   const { selectedSessionId, setSelectedSessionId } = useDashboard();
   const [sessionSearch, setSessionSearch] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Real API data
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [nodes, setNodes] = useState<MemoryNode[]>([]);
+  const [nodesForSession, setNodesForSession] = useState<string | null>(null);
+  const [nodesLoading, setNodesLoading] = useState(false);
+  const [nodesError, setNodesError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const sessionsRef = useRef<SessionSummary[]>([]);
 
   // Filters
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({
@@ -31,18 +47,100 @@ export const MemoryGraphPage: React.FC = () => {
   const [checkpointsOnly, setCheckpointsOnly] = useState(false);
   const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d' | 'all'>('all');
 
-  // Active Session
+  // One fetch of the session list per page load / retry; auto-select the
+  // newest session unless a valid one is already chosen (shared with Playground).
+  useEffect(() => {
+    let alive = true;
+    setSessionsLoading(true);
+    setSessionsError(null);
+    getSessions()
+      .then((resp) => {
+        if (!alive) return;
+        const list = resp.sessions;
+        setSessions(list);
+        sessionsRef.current = list;
+        const target =
+          list.find((s) => s.id === selectedSessionId) ||
+          [...list].sort((a, b) => (b.latest_activity ?? '').localeCompare(a.latest_activity ?? ''))[0];
+        if (target && target.id !== selectedSessionId) {
+          setSelectedSessionId(target.id);
+        }
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setSessionsError(err?.message || 'Could not load sessions.');
+      })
+      .finally(() => {
+        if (alive) setSessionsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadToken]);
+
+  // Fetch the node chain of the selected session (only once the list exists).
+  useEffect(() => {
+    if (sessionsLoading || sessionsError || sessionsRef.current.length === 0) return;
+    if (!sessionsRef.current.some((s) => s.id === selectedSessionId)) return;
+    const targetSessionId = selectedSessionId;
+    if (targetSessionId === nodesForSession) return;
+    setSelectedNodeId(null);
+    let alive = true;
+    setNodesLoading(true);
+    setNodesError(null);
+    getSessionNodes(targetSessionId)
+      .then((resp) => {
+        if (!alive) return;
+        setNodes(resp.nodes);
+        setNodesForSession(resp.session_id);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setNodes([]);
+        setNodesForSession(null);
+        setNodesError(err?.message || 'Could not load the memory chain for this session.');
+      })
+      .finally(() => {
+        if (alive) setNodesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSessionId, sessionsLoading, sessionsError, reloadToken]);
+
+  // Overall page state
+  const overallState =
+    sessionsLoading && sessions.length === 0
+      ? 'loading'
+      : sessionsError
+        ? 'error'
+        : sessions.length === 0
+          ? 'empty'
+          : 'ready';
+
+  const retry = () => {
+    sessionsRef.current = []; // force a fresh GET /sessions on retry
+    setNodesForSession(null);
+    setNodes([]);
+    setReloadToken((t) => t + 1);
+  };
+
+  // Active Session (pure conversion from API summary + fetched node chain)
   const activeSession: Session = useMemo(() => {
-    return MOCK_SESSIONS.find((s) => s.id === selectedSessionId) || MOCK_SESSIONS[0];
-  }, [selectedSessionId]);
+    const summary = sessions.find((s) => s.id === selectedSessionId) ?? null;
+    const fetchedNodes = nodesForSession === selectedSessionId ? nodes : [];
+    return toGraphSession(summary, fetchedNodes);
+  }, [sessions, selectedSessionId, nodes, nodesForSession]);
 
   // Filtered session passed to the graph
   const filteredSession: Session = useMemo(() => {
-    let nodes = activeSession.nodes || [];
+    let filtered = activeSession.nodes || [];
     if (checkpointsOnly) {
-      nodes = nodes.filter((n) => n.type === 'checkpoint');
+      filtered = filtered.filter((n) => n.type === 'checkpoint');
     }
-    nodes = nodes.filter((node) => {
+    filtered = filtered.filter((node) => {
       const modelLower = (node.model_used || '').toLowerCase();
       let key = 'custom';
       if (modelLower.includes('gpt') || modelLower.includes('openai')) key = 'openai';
@@ -56,15 +154,15 @@ export const MemoryGraphPage: React.FC = () => {
 
     return {
       ...activeSession,
-      nodes: nodes.length > 0 ? nodes : activeSession.nodes,
+      nodes: filtered.length > 0 ? filtered : activeSession.nodes,
     };
   }, [activeSession, checkpointsOnly, selectedProviders]);
 
-  const selectedNode = useMemo(() => {
-    const list = filteredSession.nodes || activeSession.nodes || [];
+  const selectedNode = useMemo<MemoryNode | null>(() => {
+    const list = filteredSession.nodes || [];
     if (!list.length) return null;
     return list.find((n) => n.node_id === selectedNodeId) || list[0];
-  }, [filteredSession.nodes, activeSession.nodes, selectedNodeId]);
+  }, [filteredSession.nodes, selectedNodeId]);
 
   // Set initial selected node
   useEffect(() => {
@@ -73,6 +171,20 @@ export const MemoryGraphPage: React.FC = () => {
       setSelectedNodeId(interesting.node_id);
     }
   }, [filteredSession.nodes, selectedNodeId]);
+
+  // Model provider of the previous node, to mark visible model usage changes
+  const selectedParent = useMemo(() => {
+    if (!selectedNode) return null;
+    const list = filteredSession.nodes || [];
+    if (!list.length) return null;
+    const parent = selectedNode.prev_id
+      ? list.find((n) => n.node_id === selectedNode.prev_id) ?? null
+      : null;
+    return parent;
+  }, [filteredSession.nodes, selectedNode]);
+  const modelChanged = Boolean(
+    selectedParent && selectedParent.model_used !== selectedNode?.model_used,
+  );
 
   const selectedNodeColor = useMemo(() => {
     if (!selectedNode) return '#BFD4FF';
@@ -85,14 +197,49 @@ export const MemoryGraphPage: React.FC = () => {
     return PROVIDER_THEMES[pKey]?.color || '#BFD4FF';
   }, [selectedNode]);
 
-  const filteredSessions = MOCK_SESSIONS.filter(
+  const filteredSessions = sessions.filter(
     (s) =>
       s.title.toLowerCase().includes(sessionSearch.toLowerCase()) ||
       s.id.toLowerCase().includes(sessionSearch.toLowerCase())
   );
 
+  const renderStatePanel = (kind: 'loading' | 'error' | 'empty') => (
+    <div className="flex-1 w-full h-full flex flex-col items-center justify-center gap-3 text-[#8A92A6]">
+      {kind === 'loading' && (
+        <>
+          <Loader2 className="w-6 h-6 animate-spin text-[#7C5CFF]" />
+          <p className="text-xs font-mono-code">Loading real memory from the gateway…</p>
+        </>
+      )}
+      {kind === 'empty' && (
+        <>
+          <Inbox className="w-6 h-6 text-[#7C5CFF]" />
+          <p className="text-xs font-mono-code">No memory sessions yet.</p>
+          <p className="text-[11px]">
+            Send a first turn in the Playground and it will appear here.
+          </p>
+        </>
+      )}
+      {kind === 'error' && (
+        <>
+          <AlertOctagon className="w-6 h-6 text-[#EF4444]" />
+          <p className="text-xs font-mono-code text-[#EF4444]">
+            {sessionsError || nodesError || 'Could not load data.'}
+          </p>
+          <button
+            onClick={retry}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-[#7C5CFF]/15 text-[#BFD4FF] border border-[#7C5CFF]/40 hover:bg-[#7C5CFF]/25 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 h-full flex flex-col">
       {/* Title Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-[#232733]/60">
         <div>
@@ -106,13 +253,13 @@ export const MemoryGraphPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono-code text-[#BFD4FF] bg-[#12151C] border border-[#232733] px-2.5 py-1 rounded-lg">
-            {activeSession.nodes.length} Memory Nodes
+            {nodesLoading ? '…' : activeSession.nodes.length} Memory Nodes
           </span>
         </div>
       </div>
 
       {/* 3-Panel Workspace: Left Filter Panel (280px) | Full-width Dark Canvas | Right Node Inspector (340px) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[720px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 grow h-[720px]">
         {/* Left Filter Panel (3 cols) */}
         <div className="lg:col-span-3 bg-[#12151C] border border-[#232733] rounded-xl flex flex-col overflow-hidden">
           {/* Panel Header */}
@@ -142,14 +289,11 @@ export const MemoryGraphPage: React.FC = () => {
 
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                 {filteredSessions.map((s) => {
-                  const isCurrent = s.id === activeSession.id;
+                  const isCurrent = s.id === selectedSessionId;
                   return (
                     <button
                       key={s.id}
-                      onClick={() => {
-                        setSelectedSessionId(s.id);
-                        setSelectedNodeId(null);
-                      }}
+                      onClick={() => setSelectedSessionId(s.id)}
                       className={`w-full text-left p-2 rounded-lg text-xs transition-colors flex items-center justify-between group ${
                         isCurrent
                           ? 'bg-[#7C5CFF]/15 border border-[#7C5CFF]/40 text-white'
@@ -158,16 +302,28 @@ export const MemoryGraphPage: React.FC = () => {
                     >
                       <div className="min-w-0 pr-2">
                         <p className="font-medium truncate group-hover:text-white">
-                          {s.title}
+                          {s.title || s.id}
                         </p>
                         <p className="text-[10px] text-[#8A92A6] font-mono-code">{s.id}</p>
                       </div>
                       <span className="text-[10px] font-mono-code bg-[#181C26] px-1.5 py-0.5 rounded text-[#BFD4FF] border border-[#232733] shrink-0">
-                        {s.nodes.length}
+                        {s.node_count}
                       </span>
                     </button>
                   );
                 })}
+                {overallState !== 'ready' && (
+                  <p className="text-[11px] text-[#8A92A6] p-2">
+                    {overallState === 'loading'
+                      ? 'Loading sessions…'
+                      : overallState === 'empty'
+                        ? 'No sessions yet.'
+                        : 'Sessions unavailable.'}
+                  </p>
+                )}
+                {overallState === 'ready' && filteredSessions.length === 0 && (
+                  <p className="text-[11px] text-[#8A92A6] p-2">No matching sessions.</p>
+                )}
               </div>
             </div>
 
@@ -253,11 +409,24 @@ export const MemoryGraphPage: React.FC = () => {
 
         {/* Center: Previous Graph View Design (6 cols) */}
         <div className="lg:col-span-6 bg-[#12151C] border border-[#232733] rounded-xl overflow-hidden flex flex-col relative h-full">
-          <GraphView
-            session={filteredSession}
-            selectedNodeId={selectedNode?.node_id ?? null}
-            onSelectNode={(nodeId) => setSelectedNodeId(nodeId)}
-          />
+          {overallState !== 'ready' ? (
+            renderStatePanel(overallState)
+          ) : nodesLoading ? (
+            <div className="flex-1 w-full h-full flex flex-col items-center justify-center gap-3 text-[#8A92A6]">
+              <Loader2 className="w-6 h-6 animate-spin text-[#7C5CFF]" />
+              <p className="text-xs font-mono-code">Loading memory chain…</p>
+            </div>
+          ) : nodesError ? (
+            <div className="flex-1 w-full h-full">
+              {renderStatePanel('error')}
+            </div>
+          ) : (
+            <GraphView
+              session={filteredSession}
+              selectedNodeId={selectedNode?.node_id ?? null}
+              onSelectNode={(nodeId) => setSelectedNodeId(nodeId)}
+            />
+          )}
         </div>
 
         {/* Right Inspector Panel for Selected Node (3 cols) */}
@@ -296,9 +465,26 @@ export const MemoryGraphPage: React.FC = () => {
                     <span className="text-xs px-2 py-0.5 rounded font-medium bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30">
                       Blocked
                     </span>
+                  ) : selectedNode.status_at_this_point === 'in_progress' ? (
+                    <span className="text-xs px-2 py-0.5 rounded font-medium bg-[#F0A35E]/15 text-[#F0A35E] border border-[#F0A35E]/30">
+                      In progress
+                    </span>
                   ) : (
                     <span className="text-xs px-2 py-0.5 rounded font-medium bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30">
                       Done
+                    </span>
+                  )}
+                </div>
+
+                {/* Provider + visible model change marker between consecutive nodes */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-mono-code text-[#8A92A6] flex items-center gap-1">
+                    <Cpu className="w-3 h-3" />
+                    provider: {selectedNode.provider ?? '—'}
+                  </span>
+                  {modelChanged && selectedParent && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-[#F0A35E]/15 text-[#F0A35E] border border-[#F0A35E]/30">
+                      Model changed: {selectedParent.model_used} → {selectedNode.model_used}
                     </span>
                   )}
                 </div>
