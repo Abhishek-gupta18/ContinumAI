@@ -1,0 +1,17 @@
+{
+  "name": "ContinumAI",
+  "short_name": "ContinumAI",
+  "description": "AI gateway with per-user keys, failover, and shared memory chain",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
