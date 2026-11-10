@@ -24,6 +24,9 @@ import { LoginPage } from './pages/auth/LoginPage';
 import { SignupPage } from './pages/auth/SignupPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 
+// Landing page
+import { Landing } from './pages/Landing';
+
 // Demo pages (unchanged)
 import { SignInDemo, ProviderKeysDemo, GatewayTokensDemo, AccountDemo } from './pages/DemoPages';
 
@@ -89,7 +92,7 @@ export default function App() {
                 <Route path="account" element={<AccountPage />} />
               </Route>
 
-              <Route path="/" element={<Navigate to="/app/graph" replace />} />
+              <Route path="/" element={<Landing />} />
 
               {/* Every existing route path keeps working */}
               <Route path="/graph" element={<Navigate to="/app/graph" replace />} />

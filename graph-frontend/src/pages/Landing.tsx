@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { MOCK_SESSIONS } from '../data/mockSessions';
 import { getUser, subscribe, DemoUser } from '../auth';
+import CrystalizedBall from '../components/CrystalizedBall';
 
 export function Landing() {
   const [user, setUser] = useState<DemoUser | null>(getUser);
@@ -20,6 +21,32 @@ export function Landing() {
 
   return (
     <div className="relative min-h-screen overflow-y-auto bg-[#10131a] font-sans text-[#e3e7eb] antialiased">
+      <div className="absolute inset-x-0 top-0 h-[720px]">
+        <CrystalizedBall
+          preset="plasma"
+          color="#a9dfc8"
+          size={0.7}
+          crackle={0.85}
+          fill={0.5}
+          interactive
+          hoverStrength={0.7}
+          strands={6}
+          flares={0.65}
+          glow={0.9}
+          sparks={0.6}
+          particleCount={15000}
+          motion="rise"
+          particleShape="square"
+          depth={0.6}
+          sway={0.5}
+          twinkle={0.5}
+          haze={0.7}
+          dustSpeed={1}
+          speed={1}
+          intro
+          paused={false}
+        />
+      </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_50%_0%,rgba(120,194,170,0.16),transparent_68%)]" />
       <div className="relative">
       {/* Top bar */}
@@ -61,7 +88,7 @@ export function Landing() {
 
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-6 pt-14 pb-10 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#91cdb4]/30 bg-[#91cdb4]/10 px-3 py-1 text-[11px] font-mono text-[#b4e3ce]">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a9dfc8]/30 bg-[#a9dfc8]/10 px-3 py-1 text-[11px] font-mono text-[#b4e3ce]">
           <Sparkles className="w-3 h-3" /> Multi-LLM gateway · shared memory chain
         </span>
         <h1 className="mt-5 text-4xl sm:text-5xl font-semibold tracking-tight text-[#f1f4f1]">
