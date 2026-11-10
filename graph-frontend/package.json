@@ -9,11 +9,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test test/app.test.ts"
+    "test": "node --import tsx --test test/app.test.ts test/api.test.ts test/providers.logic.test.ts test/playground.logic.test.ts test/sessionAdapter.test.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@google/genai": "^2.4.0",
+    "@supabase/supabase-js": "^2.119.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/d3": "^7.4.3",
     "@vitejs/plugin-react": "^5.0.4",

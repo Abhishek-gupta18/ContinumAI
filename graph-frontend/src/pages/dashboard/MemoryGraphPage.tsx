@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useDashboard } from '../../context/DashboardContext';
-import { getSessions, getSessionNodes } from '../../api/client';
+import { getSessions, getSessionNodes } from '../../api/endpoints';
 import { Session, MemoryNode, SessionSummary } from '../../types';
 import { toGraphSession } from '../../utils/sessionAdapter';
 import { PROVIDER_THEMES } from '../../data/dashboardData';

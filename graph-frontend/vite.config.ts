@@ -2,15 +2,11 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
-import dotenv from 'dotenv';
 
-// Backend env (gateway token etc.) lives in the repo root .env.
-dotenv.config({path: path.resolve(__dirname, '../.env')});
+// The browser now sends the signed-in user's own Supabase token; the proxy
+// must not inject any Authorization header.
 
 const backendTarget = 'http://localhost:3000';
-const gatewayAuth = {
-  Authorization: `Bearer ${process.env.GATEWAY_API_TOKEN || ''}`,
-};
 
 function configureGatewayProxy(proxy: {
   on: (
@@ -36,19 +32,26 @@ export default defineConfig(() => {
       proxy: {
         '/sessions': {
           target: backendTarget,
-          headers: gatewayAuth,
           changeOrigin: true,
           configure: configureGatewayProxy,
         },
         '/chat': {
           target: backendTarget,
-          headers: gatewayAuth,
           changeOrigin: true,
           configure: configureGatewayProxy,
         },
         '/providers': {
           target: backendTarget,
-          headers: gatewayAuth,
+          changeOrigin: true,
+          configure: configureGatewayProxy,
+        },
+        '/health': {
+          target: backendTarget,
+          changeOrigin: true,
+          configure: configureGatewayProxy,
+        },
+        '^/me(/|$)': {
+          target: backendTarget,
           changeOrigin: true,
           configure: configureGatewayProxy,
         },

@@ -10,6 +10,7 @@ import {
   BackgroundVariant,
   ReactFlowInstance,
   Panel,
+  MarkerType,
 } from '@xyflow/react';
 import { MemoryNode, Session } from '../types';
 import { TurnNode } from './nodes/TurnNode';
@@ -126,6 +127,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             },
             markerEnd: {
               ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
+              type: MarkerType.ArrowClosed,
               color: isConnectedToSelected ? '#818cf8' : '#4f5263',
             },
             zIndex: isConnectedToSelected ? 10 : 1,
@@ -141,6 +143,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             },
             markerEnd: {
               ...(typeof e.markerEnd === 'object' ? e.markerEnd : {}),
+              type: MarkerType.ArrowClosed,
               color: isConnectedToSelected ? '#c084fc' : '#7c3aed',
             },
             zIndex: isConnectedToSelected ? 12 : 2,
