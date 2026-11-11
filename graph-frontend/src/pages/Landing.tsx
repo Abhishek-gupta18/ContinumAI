@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { MOCK_SESSIONS } from '../data/mockSessions';
 import { getUser, subscribe, DemoUser } from '../auth';
-import CrystalizedBall from '../components/CrystalizedBall';
+import AeroShards from '../components/AeroShards';
 
 export function Landing() {
   const [user, setUser] = useState<DemoUser | null>(getUser);
@@ -21,33 +21,34 @@ export function Landing() {
 
   return (
     <div className="relative min-h-screen overflow-y-auto bg-[#10131a] font-sans text-[#e3e7eb] antialiased">
-      <div className="absolute inset-x-0 top-0 h-[720px]">
-        <CrystalizedBall
-          preset="plasma"
-          color="#a9dfc8"
-          size={0.7}
-          crackle={0.85}
-          fill={0.5}
-          interactive
-          hoverStrength={0.7}
-          strands={6}
-          flares={0.65}
-          glow={0.9}
-          sparks={0.6}
-          particleCount={15000}
-          motion="rise"
-          particleShape="square"
-          depth={0.6}
-          sway={0.5}
-          twinkle={0.5}
-          haze={0.7}
-          dustSpeed={1}
+      <div className="absolute inset-0">
+        <AeroShards
+          shardColor="#896ABD"
+          accentColor="#A855F7"
+          placement="full"
+          material="glass"
+          markers="plus"
+          count={1300}
+          depthOfField={0.75}
+          vignette={0.3}
+          mouseInteraction
+          pulseOnClick
+          holdToGather
+          lightMode={false}
+          shardSize={1}
+          spread={1}
+          twist={1}
+          billow={1}
           speed={1}
+          scale={1}
+          glow={0.35}
+          grain={0.06}
           intro
+          mouseStrength={0.6}
+          parallax={0.5}
           paused={false}
         />
       </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_50%_0%,rgba(120,194,170,0.16),transparent_68%)]" />
       <div className="relative">
       {/* Top bar */}
       <header className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
