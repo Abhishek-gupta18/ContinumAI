@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { draw, frame, init, sampler, storage, surface, target, uniforms } from 'vgpu';
+import { prepareShader } from '@vgpu/wgsl/prepare';
 import './AeroShards.css';
 
 const ROOT = 'aero-shards';
@@ -54,7 +55,7 @@ const RING_SIZES = [
 ];
 const TAU = Math.PI * 2;
 
-const SHARD_SHADER = `
+const SHARD_SHADER = prepareShader(`
 struct Frame {
   view: vec4f,
   eye: vec4f,
@@ -494,7 +495,7 @@ fn fs_edge(in: VertexOut) -> FragmentOut {
   out.depth = surface.depth;
   return out;
 }
-`;
+`, 'shard.wgsl');
 
 const SCREEN_VERTEX = `
 struct ScreenOut {
@@ -513,7 +514,7 @@ fn vs_screen(@builtin(vertex_index) index: u32) -> ScreenOut {
 }
 `;
 
-const LAYER_BLUR_SHADER = `${SCREEN_VERTEX}
+const LAYER_BLUR_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Spread { texel: vec4f }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearSampler: sampler;
@@ -533,9 +534,9 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   }
   return total / weight;
 }
-`;
+`, 'layer-blur.wgsl');
 
-const SHADOW_SHADER = `${SCREEN_VERTEX}
+const SHADOW_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Shade {
   info: vec4f,
   more: vec4f,
@@ -570,9 +571,9 @@ fn fs_main(@builtin(position) pixel: vec4f) -> @location(0) vec4f {
   }
   return vec4f(color.rgb * (1.0 - occlusion * shadeInfo.info.z), color.a);
 }
-`;
+`, 'shadow.wgsl');
 
-const COMPOSITE_SHADER = `${SCREEN_VERTEX}
+const COMPOSITE_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Blend { info: vec4f }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearSampler: sampler;
@@ -582,9 +583,9 @@ struct Blend { info: vec4f }
 fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   return textureSampleLevel(source, linearSampler, uv, 0.0) * mixInfo.info.x;
 }
-`;
+`, 'composite.wgsl');
 
-const MARKER_SHADER = `
+const MARKER_SHADER = prepareShader(`
 struct Frame {
   view: vec4f,
   eye: vec4f,
@@ -678,9 +679,9 @@ fn fs_main(in: MarkerOut) -> @location(0) vec4f {
   let color = (1.0 - exp(-mix(tint, vec3f(1.0), 0.35) * light * 1.6)) * 1.4;
   return vec4f(color, max(max(color.r, color.g), color.b) * 0.8);
 }
-`;
+`, 'marker.wgsl');
 
-const PREFILTER_SHADER = `${SCREEN_VERTEX}
+const PREFILTER_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Bloom { texel: vec4f }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearSampler: sampler;
@@ -698,9 +699,9 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let total = bright(uv + vec2f(o.x, o.y)) + bright(uv + vec2f(-o.x, o.y)) + bright(uv + vec2f(o.x, -o.y)) + bright(uv - o);
   return vec4f(total * 0.25, 0.0);
 }
-`;
+`, 'prefilter.wgsl');
 
-const DOWNSAMPLE_SHADER = `${SCREEN_VERTEX}
+const DOWNSAMPLE_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Bloom { texel: vec4f }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearSampler: sampler;
@@ -716,9 +717,9 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   color += textureSampleLevel(source, linearSampler, uv - o, 0.0) * 0.1875;
   return color;
 }
-`;
+`, 'downsample.wgsl');
 
-const BLUR_SHADER = `${SCREEN_VERTEX}
+const BLUR_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Bloom { texel: vec4f }
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearSampler: sampler;
@@ -733,9 +734,9 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   color += (textureSampleLevel(source, linearSampler, uv + delta * 5.242989, 0.0) + textureSampleLevel(source, linearSampler, uv - delta * 5.242989, 0.0)) * 0.018156;
   return color;
 }
-`;
+`, 'blur.wgsl');
 
-const FINISH_SHADER = `${SCREEN_VERTEX}
+const FINISH_SHADER = prepareShader(`${SCREEN_VERTEX}
 struct Finish {
   info: vec4f,
   paper: vec4f,
@@ -794,7 +795,7 @@ fn fs_main(@location(0) uv: vec2f, @builtin(position) pixel: vec4f) -> @location
   }
   return vec4f(rgb, a);
 }
-`;
+`, 'finish.wgsl');
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -989,6 +990,9 @@ export default function AeroShards({
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
+  const [webgpuReady, setWebgpuReady] = useState(false);
+  const [webgpuError, setWebgpuError] = useState(null);
+
   const settings = {
     shard: parseColor(shardColor, [0.54, 0.42, 0.74]) ?? [0.54, 0.42, 0.74],
     accent: parseColor(accentColor, [0.66, 0.33, 0.97]) ?? [0.66, 0.33, 0.97],
@@ -1038,6 +1042,7 @@ export default function AeroShards({
       cancelAnimationFrame(raf);
       gpu?.dispose();
       gpu = null;
+      setWebgpuError(error instanceof Error ? error.message : String(error));
       onErrorRef.current?.(error instanceof Error ? error : new Error(String(error)));
     };
 
@@ -2213,6 +2218,9 @@ export default function AeroShards({
       visibility.observe(container);
       cleanups.push(() => visibility.disconnect());
       raf = requestAnimationFrame(tick);
+      if (!disposed) {
+        setWebgpuReady(true);
+      }
     };
 
     start().catch(fail);
@@ -2226,5 +2234,32 @@ export default function AeroShards({
     };
   }, []);
 
-  return <div ref={containerRef} className={[ROOT, className].filter(Boolean).join(' ')} style={style} />;
+  return (
+    <div ref={containerRef} className={[ROOT, className].filter(Boolean).join(' ')} style={style}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '12px',
+          color: '#896abd',
+          fontFamily: 'monospace',
+          padding: '20px',
+          textAlign: 'center',
+          pointerEvents: 'none',
+          opacity: webgpuReady ? 0 : 1,
+          transition: 'opacity 0.5s',
+          background: webgpuError ? 'rgba(137,106,189,0.1)' : 'transparent',
+        }}
+      >
+        {webgpuError ? (
+          <div>WebGPU unavailable: {webgpuError}</div>
+        ) : webgpuReady ? null : (
+          <div>Initializing WebGPU…<br/>(requires Chrome 113+ / Edge 113+)</div>
+        )}
+      </div>
+    </div>
+  );
 }
