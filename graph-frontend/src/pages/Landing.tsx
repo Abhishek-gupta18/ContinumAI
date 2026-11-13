@@ -115,8 +115,8 @@ export function Landing() {
           >
             Open Workspace <ArrowRight className="w-4 h-4" />
           </a>
-          <a
-            href="/demo/keys"
+<a
+            href="/login"
             className="inline-flex items-center gap-2 rounded-lg border border-[#3a3050] bg-[#191425]/80 px-5 py-2.5 text-sm text-[#d8d0e8] transition hover:border-[#a06fd8] hover:bg-[#241d33]"
           >
             <KeyRound className="w-4 h-4" /> API keys

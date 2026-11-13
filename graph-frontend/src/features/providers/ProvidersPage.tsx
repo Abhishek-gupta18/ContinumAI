@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useProviderKeys } from './useProviderKeys';
 import {
   kindLabel,
@@ -301,11 +301,23 @@ export function ProvidersPage(): React.ReactElement {
     if (ok) closeForm();
   };
 
+  // Auto-open add form when no keys exist and no error (or byok not configured)
+  useEffect(() => {
+    if (status === 'ready' && rows.length === 0 && !formOpen && !atLimit) {
+      setFormOpen(true);
+    }
+    if (status === 'error' && pageError.includes('Provider keys are not enabled') && rows.length === 0 && !formOpen && !atLimit) {
+      setFormOpen(true);
+    }
+  }, [status, pageError, rows.length, formOpen, atLimit]);
+
   if (status === 'loading') {
     return <p className="text-xs text-[#8A92A6]">Loading provider keys…</p>;
   }
 
-  if (status === 'error') {
+  const byokNotConfigured = status === 'error' && pageError.includes('Provider keys are not enabled');
+
+  if (status === 'error' && !byokNotConfigured) {
     return (
       <div className="space-y-3">
         <p role="alert" className="text-xs text-rose-300">{pageError}</p>

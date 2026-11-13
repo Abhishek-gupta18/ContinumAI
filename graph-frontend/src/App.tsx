@@ -6,7 +6,6 @@ import { registerUnauthorizedHandler } from './api/http';
 import { supabaseConfigured } from './lib/supabase';
 import { ErrorBoundary } from './components/app/ErrorBoundary';
 import { AppLayout } from './components/app/AppLayout';
-import { ComingSoon } from './components/app/ComingSoon';
 import { AccountPage } from './components/app/AccountPage';
 
 // Memory Graph (keeps its current page)
@@ -18,6 +17,9 @@ import { PlaygroundPage } from './features/playground/PlaygroundPage';
 
 // Providers (real BYOK page)
 import { ProvidersPage } from './features/providers/ProvidersPage';
+
+// API Access (real gateway keys page)
+import { ApiAccessPage } from './pages/dashboard/ApiAccessPage';
 
 // Auth pages
 import { LoginPage } from './pages/auth/LoginPage';
@@ -73,22 +75,17 @@ export default function App() {
                 path="/app"
                 element={
                   <ProtectedRoute>
-                    <AppLayout />
+                    <DashboardProvider>
+                      <AppLayout />
+                    </DashboardProvider>
                   </ProtectedRoute>
                 }
               >
                 <Route index element={<Navigate to="/app/graph" replace />} />
-                <Route
-                  path="graph"
-                  element={
-                    <DashboardProvider>
-                      <MemoryGraphPage />
-                    </DashboardProvider>
-                  }
-                />
+                <Route path="graph" element={<MemoryGraphPage />} />
                 <Route path="playground" element={<PlaygroundPage />} />
                 <Route path="providers" element={<ProvidersPage />} />
-                <Route path="api-access" element={<ComingSoon title="API Access" />} />
+                <Route path="api-access" element={<ApiAccessPage />} />
                 <Route path="account" element={<AccountPage />} />
               </Route>
 
