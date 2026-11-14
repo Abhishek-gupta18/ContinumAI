@@ -28,6 +28,7 @@ export interface AeroShardsProps {
   className?: string;
   style?: React.CSSProperties;
   onError?: (error: Error) => void;
+  onReady?: () => void;
 }
 declare function AeroShards(props: AeroShardsProps): JSX.Element;
 export default AeroShards;

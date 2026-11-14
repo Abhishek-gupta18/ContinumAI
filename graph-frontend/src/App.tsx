@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { ProtectedRoute } from './auth/ProtectedRoute';
@@ -8,29 +8,24 @@ import { ErrorBoundary } from './components/app/ErrorBoundary';
 import { AppLayout } from './components/app/AppLayout';
 import { AccountPage } from './components/app/AccountPage';
 
-// Memory Graph (keeps its current page)
-import { DashboardProvider } from './context/DashboardContext';
-import { MemoryGraphPage } from './pages/dashboard/MemoryGraphPage';
+const DashboardProvider = lazy(() => import('./context/DashboardContext').then(m => ({ default: m.DashboardProvider })));
 
-// Playground (real chat page)
-import { PlaygroundPage } from './features/playground/PlaygroundPage';
+const MemoryGraphPage = lazy(() => import('./pages/dashboard/MemoryGraphPage').then(m => ({ default: m.MemoryGraphPage })));
+const PlaygroundPage = lazy(() => import('./features/playground/PlaygroundPage').then(m => ({ default: m.PlaygroundPage })));
+const ProvidersPage = lazy(() => import('./features/providers/ProvidersPage').then(m => ({ default: m.ProvidersPage })));
+const ApiAccessPage = lazy(() => import('./pages/dashboard/ApiAccessPage').then(m => ({ default: m.ApiAccessPage })));
+const AccountPageLazy = lazy(() => import('./components/app/AccountPage').then(m => ({ default: m.AccountPage })));
 
-// Providers (real BYOK page)
-import { ProvidersPage } from './features/providers/ProvidersPage';
+const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const SignupPage = lazy(() => import('./pages/auth/SignupPage').then(m => ({ default: m.SignupPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
 
-// API Access (real gateway keys page)
-import { ApiAccessPage } from './pages/dashboard/ApiAccessPage';
+const Landing = lazy(() => import('./pages/Landing').then(m => ({ default: m.Landing })));
 
-// Auth pages
-import { LoginPage } from './pages/auth/LoginPage';
-import { SignupPage } from './pages/auth/SignupPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-
-// Landing page
-import { Landing } from './pages/Landing';
-
-// Demo pages (unchanged)
-import { SignInDemo, ProviderKeysDemo, GatewayTokensDemo, AccountDemo } from './pages/DemoPages';
+const SignInDemo = lazy(() => import('./pages/DemoPages').then(m => ({ default: m.SignInDemo })));
+const ProviderKeysDemo = lazy(() => import('./pages/DemoPages').then(m => ({ default: m.ProviderKeysDemo })));
+const GatewayTokensDemo = lazy(() => import('./pages/DemoPages').then(m => ({ default: m.GatewayTokensDemo })));
+const AccountDemo = lazy(() => import('./pages/DemoPages').then(m => ({ default: m.AccountDemo })));
 
 // On 401 from the gateway: sign out and go to /login.
 function UnauthorizedBridge(): null {
@@ -60,36 +55,34 @@ export default function App() {
           <BrowserRouter>
             <UnauthorizedBridge />
             <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/login" element={<Suspense fallback={null}><LoginPage /></Suspense>} />
+              <Route path="/signup" element={<Suspense fallback={null}><SignupPage /></Suspense>} />
+              <Route path="/forgot-password" element={<Suspense fallback={null}><ForgotPasswordPage /></Suspense>} />
 
               {/* Demo pages */}
-              <Route path="/demo/signin" element={<SignInDemo />} />
-              <Route path="/demo/keys" element={<ProviderKeysDemo />} />
-              <Route path="/demo/tokens" element={<GatewayTokensDemo />} />
-              <Route path="/demo/account" element={<AccountDemo />} />
+              <Route path="/demo/signin" element={<Suspense fallback={null}><SignInDemo /></Suspense>} />
+              <Route path="/demo/keys" element={<Suspense fallback={null}><ProviderKeysDemo /></Suspense>} />
+              <Route path="/demo/tokens" element={<Suspense fallback={null}><GatewayTokensDemo /></Suspense>} />
+              <Route path="/demo/account" element={<Suspense fallback={null}><AccountDemo /></Suspense>} />
 
               {/* Protected app shell */}
               <Route
                 path="/app"
                 element={
                   <ProtectedRoute>
-                    <DashboardProvider>
-                      <AppLayout />
-                    </DashboardProvider>
+                    <Suspense fallback={null}><DashboardProvider><AppLayout /></DashboardProvider></Suspense>
                   </ProtectedRoute>
                 }
               >
                 <Route index element={<Navigate to="/app/graph" replace />} />
-                <Route path="graph" element={<MemoryGraphPage />} />
-                <Route path="playground" element={<PlaygroundPage />} />
-                <Route path="providers" element={<ProvidersPage />} />
-                <Route path="api-access" element={<ApiAccessPage />} />
-                <Route path="account" element={<AccountPage />} />
+                <Route path="graph" element={<Suspense fallback={null}><MemoryGraphPage /></Suspense>} />
+                <Route path="playground" element={<Suspense fallback={null}><PlaygroundPage /></Suspense>} />
+                <Route path="providers" element={<Suspense fallback={null}><ProvidersPage /></Suspense>} />
+                <Route path="api-access" element={<Suspense fallback={null}><ApiAccessPage /></Suspense>} />
+                <Route path="account" element={<Suspense fallback={null}><AccountPageLazy /></Suspense>} />
               </Route>
 
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<Suspense fallback={null}><Landing /></Suspense>} />
 
               {/* Every existing route path keeps working */}
               <Route path="/graph" element={<Navigate to="/app/graph" replace />} />

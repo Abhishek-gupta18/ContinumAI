@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import {
   ArrowRight,
   KeyRound,
@@ -12,19 +12,66 @@ import {
 } from 'lucide-react';
 import { MOCK_SESSIONS } from '../data/mockSessions';
 import { getUser, subscribe, DemoUser } from '../auth';
-import AeroShards from '../components/AeroShards';
+import { hasUsableWebGPU } from '../components/webgpuSupport';
+
+const AeroShards = lazy(() => import('../components/AeroShards').then(m => ({ default: m.default })));
+const AeroLite = lazy(() => import('../components/AeroLite').then(m => ({ default: m.default })));
 
 
 export function Landing() {
   const [user, setUser] = useState<DemoUser | null>(getUser);
+  const [tier, setTier] = useState<'checking' | 'gpu' | 'lite' | 'off'>('checking');
+  const [gpuReady, setGpuReady] = useState(false);
+  const [armed, setArmed] = useState(false);
 
   useEffect(() => subscribe(() => setUser(getUser())), []);
+
+  // Read ?fx query and detect tier
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fx = params.get('fx');
+    if (fx === 'off') { setTier('off'); return; }
+    if (fx === 'lite') { setTier('lite'); return; }
+    if (fx === 'gpu') { setTier('gpu'); return; }
+
+    // Auto-detect
+    hasUsableWebGPU().then(ok => setTier(ok ? 'gpu' : 'lite'));
+  }, []);
+
+  // Arm after idle (with fallback timeout)
+  useEffect(() => {
+    const schedule = () => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => setArmed(true), { timeout: 200 });
+      } else {
+        setTimeout(() => setArmed(true), 200);
+      }
+    };
+    if (document.readyState === 'complete') schedule();
+    else window.addEventListener('load', schedule, { once: true });
+  }, []);
+
+  // Reset gpuReady when tier changes
+  useEffect(() => {
+    setGpuReady(false);
+  }, [tier]);
+
   const nodeCount = MOCK_SESSIONS.reduce((sum, s) => sum + s.nodes.length, 0);
 
-  return (
-    <div className="relative min-h-screen overflow-y-auto bg-[#0e0b16] font-sans text-[#e6e1f0] antialiased">
-      <div className="fixed inset-0 pointer-events-none z-0">
+  // CSS gradient layer (always rendered)
+  const gradientStyle: React.CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 0,
+    pointerEvents: 'none',
+    background: 'radial-gradient(ellipse at 50% 0%, rgba(137,106,189,0.18) 0%, transparent 68%), #0e0b16',
+  };
 
+  // Render background based on tier
+  let background = null;
+  if (tier === 'gpu') {
+    background = (
+      <Suspense fallback={null}>
         <AeroShards
           shardColor="#896ABD"
           accentColor="#A855F7"
@@ -50,10 +97,24 @@ export function Landing() {
           mouseStrength={0.6}
           parallax={0.5}
           paused={false}
-
+          onError={() => setTier('lite')}
+          onReady={() => setGpuReady(true)}
         />
+      </Suspense>
+    );
+  } else if (tier === 'lite') {
+    background = (
+      <Suspense fallback={null}>
+        <AeroLite style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      </Suspense>
+    );
+  }
 
-
+return (
+    <div className="relative min-h-screen overflow-y-auto bg-[#0e0b16] font-sans text-[#e6e1f0] antialiased">
+      <div style={gradientStyle} />
+      <div className="fixed inset-0 pointer-events-none z-0" style={{ opacity: armed && (tier === 'lite' || gpuReady) ? 1 : 0, transition: 'opacity 400ms' }}>
+        {armed && background}
       </div>
       <div className="relative z-10">
       {/* Top bar */}

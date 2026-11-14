@@ -55,6 +55,33 @@ const RING_SIZES = [
 ];
 const TAU = Math.PI * 2;
 
+// ===== PERFORMANCE OPTIMIZATION CONSTANTS =====
+const RENDER_SCALES = [1.0, 0.75, 0.5, 0.4];
+
+// ---- Module-level cached device caps (computed once) ----
+let _cachedDeviceCaps = null;
+const getDeviceCaps = () => {
+  if (_cachedDeviceCaps) return _cachedDeviceCaps;
+  if (typeof window === 'undefined') return (_cachedDeviceCaps = { isMobile: false, dpr: 1 });
+  const isCoarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const deviceMemory = navigator.deviceMemory ?? 8;
+  const isMobile = isCoarse || deviceMemory <= 4;
+  const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 1.5);
+  return (_cachedDeviceCaps = { isMobile, dpr });
+};
+
+const getDebugFlags = () => {
+  if (typeof window === 'undefined') return { perf: false, freeze: 0, fxOff: false };
+  const params = new URLSearchParams(window.location.search);
+  return {
+    perf: params.get('perf') === '1',
+    freeze: parseFloat(params.get('freeze') || '0'),
+    fxOff: params.get('fx') === 'off'
+  };
+};
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
 const SHARD_SHADER = prepareShader(`
 struct Frame {
   view: vec4f,
@@ -797,8 +824,6 @@ fn fs_main(@location(0) uv: vec2f, @builtin(position) pixel: vec4f) -> @location
 }
 `, 'finish.wgsl');
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-
 const smoother = x => {
   const t = clamp(x, 0, 1);
   return t * t * t * (t * (t * 6 - 15) + 10);
@@ -984,14 +1009,14 @@ export default function AeroShards({
   dpr = 2,
   className = '',
   style,
-  onError
+  onError,
+  onReady
 }) {
   const containerRef = useRef(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
-
-  const [webgpuReady, setWebgpuReady] = useState(false);
-  const [webgpuError, setWebgpuError] = useState(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const settings = {
     shard: parseColor(shardColor, [0.54, 0.42, 0.74]) ?? [0.54, 0.42, 0.74],
@@ -1017,16 +1042,29 @@ export default function AeroShards({
     markers: MARKER_STYLES[markers] ?? -1,
     pulseOnClick,
     holdToGather,
-    parallax: clamp(parallax, 0, 1),
+parallax: clamp(parallax, 0, 1),
     paused,
     dpr: Math.max(0.5, dpr)
   };
+  const { perf, freeze, fxOff } = getDebugFlags();
+  if (fxOff) return null;
+
+  const { isMobile, dpr: deviceDpr } = getDeviceCaps();
+  const reduced = prefersReduced();
+
+  // Use render scale from adaptive quality governor
+  const renderScaleRef = useRef(isMobile ? 0.5 : 1.0);
+
+  // Refs for frame pacing and adaptive quality
+  const frameTimeHistoryRef = useRef([]);
+  const lastScaleEvalRef = useRef(0);
+
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return undefined;
+    if (!container || fxOff) return undefined;
     const canvas = document.createElement('canvas');
     canvas.className = CANVAS;
     container.appendChild(canvas);
@@ -1036,32 +1074,52 @@ export default function AeroShards({
     let raf = 0;
     const cleanups = [];
 
+    // ?perf=1 overlay
+    let perfOverlay = null;
+    if (perf) {
+      perfOverlay = document.createElement('div');
+      perfOverlay.style.cssText = 'position:absolute;top:8px;right:8px;z-index:50;font:11px monospace;color:#fff;background:rgba(0,0,0,.7);padding:4px 8px;pointer-events:none;';
+      perfOverlay.textContent = 'init…';
+      container.appendChild(perfOverlay);
+      cleanups.push(() => { perfOverlay?.remove(); perfOverlay = null; });
+    }
+
     const fail = error => {
       if (disposed) return;
       disposed = true;
       cancelAnimationFrame(raf);
       gpu?.dispose();
       gpu = null;
-      setWebgpuError(error instanceof Error ? error.message : String(error));
+      console.info('[AeroShards] fail:', error instanceof Error ? error.message : String(error));
       onErrorRef.current?.(error instanceof Error ? error : new Error(String(error)));
     };
 
     const start = async () => {
       if (typeof navigator === 'undefined' || !('gpu' in navigator)) throw new Error('WebGPU is not available');
-      const instance = await init({ powerPreference: 'high-performance' });
+      const instance = await init({ powerPreference: isMobile ? 'low-power' : 'high-performance' });
       gpu = instance;
       if (disposed) {
         instance.dispose();
         return;
       }
+      // Device lost handling
+      if (gpu?.device?.lost) {
+        gpu.device.lost.then((info) => {
+          console.info('[AeroShards] Device lost:', info?.message || info);
+          fail(new Error('WebGPU device lost: ' + (info?.message || info)));
+        }).catch(() => {});
+      }
       cleanups.push(instance.onError(fail));
       const format = navigator.gpu.getPreferredCanvasFormat();
       const sizeFor = () => {
-        const ratio = Math.min(window.devicePixelRatio || 1, settingsRef.current.dpr);
-        return [
-          Math.max(1, Math.round(container.clientWidth * ratio)),
-          Math.max(1, Math.round(container.clientHeight * ratio))
-        ];
+        const ratio = deviceDpr * renderScaleRef.current;
+        const w = Math.max(1, Math.round(container.clientWidth * ratio));
+        const h = Math.max(1, Math.round(container.clientHeight * ratio));
+        if (!Number.isFinite(w) || !Number.isFinite(h)) {
+          console.warn('[AeroShards] Non-finite canvas size, using fallback');
+          return [1, 1];
+        }
+        return [w, h];
       };
       const output = surface(instance, canvas, {
         autoResize: false,
@@ -1363,7 +1421,8 @@ export default function AeroShards({
         markerTotal: 0,
         targets: new Map(),
         quiet: 0,
-        seen: null
+        seen: null,
+        readyFired: false
       };
 
       const buildPaths = aspect => {
@@ -2032,9 +2091,17 @@ export default function AeroShards({
           return;
         }
         const s = settingsRef.current;
-        const dt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 0;
+
+        // ===== FRAME PACING AT TOP (before dt) =====
+        const gateMs = isMobile ? 1000 / 30 - 4 : 1000 / 60 - 4;
+        if (state.lastFrameTime && now - state.lastFrameTime < gateMs) return;
+        state.lastFrameTime = now;
+
+        const realDt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 0;
         state.last = now;
         const reduced = prefersReduced();
+        const dt = freeze > 0 ? (state.clock < freeze ? 0.05 : 0) : realDt;
+        if (freeze > 0 && dt === 0) { if (state.frozen) return; state.frozen = true; }
         state.clock += dt;
         if (state.introAt < 0) state.introAt = state.clock;
         if (state.shards.length !== s.count) {
@@ -2042,6 +2109,7 @@ export default function AeroShards({
           state.order = [];
         }
         const moving = !s.paused && !reduced;
+
         if (moving) {
           for (let level = 0; level < LEVELS; level += 1) {
             state.travel[level] = (state.travel[level] + (dt * s.speed * 0.09) / paths[level].length) % 1;
@@ -2049,6 +2117,40 @@ export default function AeroShards({
           state.roll += dt * s.speed * 1.0;
           state.twist += dt * s.speed * 0.08;
           state.drift += dt * s.speed;
+        }
+
+        // ===== ADAPTIVE QUALITY GOVERNOR (runs for everyone, not just perf) =====
+        const frameTime = now - (state.lastRenderTime || now);
+        state.lastRenderTime = now;
+        state.frameTimeHistory = state.frameTimeHistory || [];
+        state.frameTimeHistory.push(frameTime);
+        if (state.frameTimeHistory.length > 60) state.frameTimeHistory.shift();
+
+        const hist = state.frameTimeHistory;
+        const avg = hist.length ? hist.reduce((a, b) => a + b, 0) / hist.length : 0;
+
+        if (!freeze && hist.length >= 30 &&
+            (!state.lastScaleEval || now - state.lastScaleEval > 2000)) {
+          const i = RENDER_SCALES.indexOf(renderScaleRef.current);
+          const startScale = isMobile ? 0.5 : 1.0;
+          let next = RENDER_SCALES.indexOf(renderScaleRef.current);
+          if (avg > 36 && next < RENDER_SCALES.length - 1) next = next + 1;
+          else if (avg < 28 && next > 0 && renderScaleRef.current < startScale) next = next - 1;
+          if (next !== i) {
+            renderScaleRef.current = RENDER_SCALES[next];
+            state.frameTimeHistory.length = 0;
+            state.quiet = 0;
+          }
+          state.lastScaleEval = now;
+        }
+
+        // Performance failover: if at minimum scale and still too slow for 10s
+        const mean = hist.length ? hist.reduce((a, b) => a + b, 0) / hist.length : 0;
+        if (renderScaleRef.current <= 0.4 && hist.length >= 30 && mean > 36) {
+          state.slowSince = state.slowSince || now;
+          if (now - state.slowSince > 10000) { fail(new Error('too slow')); return; }
+        } else {
+          state.slowSince = 0;
         }
 
         const goal = PLACEMENTS.map((_, index) => (index === s.placement ? 1 : 0));
@@ -2136,6 +2238,21 @@ export default function AeroShards({
         if (state.quiet > 30) return;
         resize();
         render(s, dt, reduced);
+        if (!state.readyFired) {
+          state.readyFired = true;
+          onReadyRef.current?.();
+        }
+
+        // ?perf=1 overlay update (max every 500ms)
+        if (perf && perfOverlay) {
+          const avg = state.frameTimeHistory.reduce((a, b) => a + b, 0) / state.frameTimeHistory.length || 0;
+          const fps = avg > 0 ? (1000 / avg).toFixed(1) : 0;
+          const now2 = performance.now();
+          if (!state.lastPerfOverlayUpdate || now2 - state.lastPerfOverlayUpdate > 500) {
+            state.lastPerfOverlayUpdate = now2;
+            perfOverlay.textContent = `${avg.toFixed(1)} ms | ${fps} fps | scale ${renderScaleRef.current} | dpr ${deviceDpr}`;
+          }
+        }
       };
 
       const local = event => {
@@ -2218,9 +2335,6 @@ export default function AeroShards({
       visibility.observe(container);
       cleanups.push(() => visibility.disconnect());
       raf = requestAnimationFrame(tick);
-      if (!disposed) {
-        setWebgpuReady(true);
-      }
     };
 
     start().catch(fail);
@@ -2235,31 +2349,6 @@ export default function AeroShards({
   }, []);
 
   return (
-    <div ref={containerRef} className={[ROOT, className].filter(Boolean).join(' ')} style={style}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '12px',
-          color: '#896abd',
-          fontFamily: 'monospace',
-          padding: '20px',
-          textAlign: 'center',
-          pointerEvents: 'none',
-          opacity: webgpuReady ? 0 : 1,
-          transition: 'opacity 0.5s',
-          background: webgpuError ? 'rgba(137,106,189,0.1)' : 'transparent',
-        }}
-      >
-        {webgpuError ? (
-          <div>WebGPU unavailable: {webgpuError}</div>
-        ) : webgpuReady ? null : (
-          <div>Initializing WebGPU…<br/>(requires Chrome 113+ / Edge 113+)</div>
-        )}
-      </div>
-    </div>
+    <div ref={containerRef} className={[ROOT, className].filter(Boolean).join(' ')} style={style} />
   );
 }
