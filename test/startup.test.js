@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { NEUTRAL_ENV } = require('./helpers/neutralEnv');
 
 const SERVER = path.join(__dirname, '..', 'server.js');
 
@@ -27,7 +28,7 @@ function freePort() {
 
 // Minimal clean environment: nothing from the developer's shell or .env leaks into the child.
 function childEnv(extra) {
-  const env = { PATH: process.env.PATH || '', ...extra };
+  const env = { ...NEUTRAL_ENV, PATH: process.env.PATH || '', ...extra };
   if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot;
   return env;
 }

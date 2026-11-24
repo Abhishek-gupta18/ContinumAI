@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { NEUTRAL_ENV } = require('./helpers/neutralEnv');
 
 const { createApp } = require('../server');
 const { buildProviders } = require('../providers');
@@ -796,6 +797,7 @@ test('startup guard: child process with no token and no ALLOW_UNAUTHENTICATED ex
       {
         cwd: emptyDir,
         env: {
+          ...NEUTRAL_ENV,
           PATH: process.env.PATH,
           SystemRoot: process.env.SystemRoot,
           // No GATEWAY_API_TOKEN, no ALLOW_UNAUTHENTICATED
@@ -1359,6 +1361,7 @@ test('F1: REQUIRE_DATABASE=true with empty DATABASE_URL -> clear error and exit(
       {
         cwd: emptyDir,
         env: {
+          ...NEUTRAL_ENV,
           PATH: process.env.PATH,
           SystemRoot: process.env.SystemRoot,
           GATEWAY_API_TOKEN: 'test-token',

@@ -234,6 +234,10 @@ if (require.main === module) {
     );
     process.exit(1);
   }
+  if (process.env.NODE_ENV === 'production' && allowUnauth) {
+    console.error('ALLOW_UNAUTHENTICATED=true is not allowed when NODE_ENV=production.');
+    process.exit(1);
+  }
 
   let memory;
   if (typeof process.env.DATABASE_URL === 'string' && process.env.DATABASE_URL.length > 0) {
