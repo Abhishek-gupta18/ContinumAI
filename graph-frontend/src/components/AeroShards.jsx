@@ -1103,8 +1103,8 @@ parallax: clamp(parallax, 0, 1),
         return;
       }
       // Device lost handling
-      if (gpu?.device?.lost) {
-        gpu.device.lost.then((info) => {
+      if (gpu?.lost) {
+        gpu.lost.then((info) => {
           console.info('[AeroShards] Device lost:', info?.message || info);
           fail(new Error('WebGPU device lost: ' + (info?.message || info)));
         }).catch(() => {});

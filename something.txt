@@ -1,0 +1,691 @@
+﻿opencode -s ses_e59dc0272ffeBMNqQn1uQdLLO7
+
+
+COMMAND RUN:
+cd D:\open_sourse\ContinumAI
+$out = "$env:TEMP\continumai_snapshot.txt"
+"== SNAPSHOT $(Get-Date -Format s) ==" | Out-File $out -Encoding utf8
+function Sec($t) { "
+## $t" | Out-File $out -Append -Encoding utf8 }
+Sec "git"; git log --oneline -5 2>&1 | Out-File $out -Append -Encoding utf8; git status -sb 2>&1 | Out-File $out -Append -Encoding utf8
+Sec "files (lines)"
+Get-ChildItem auth,crypto,db,keys,memory,net,providers,routes,scripts,test,server.js,package.json -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { "{0,5}  {1}" -f (Get-Content $.FullName | Measure-Object -Line).Lines, $.FullName.Substring((Get-Location).Path.Length+1) } | Out-File $out -Append -Encoding utf8
+Sec "routes"
+Select-String -Path server.js,routes\*.js -Pattern "app\.(get|post|put|delete|use)\(|router\.(get|post|put|delete)\(" | ForEach-Object { "{0}:{1}: {2}" -f $.Filename,$.LineNumber,$.Line.Trim() } | Out-File $out -Append -Encoding utf8
+Sec "env names used"
+Get-ChildItem server.js,providers,routes,auth,keys,memory,crypto,net,scripts -Recurse -Include *.js -File | Select-String -Pattern "process\.env\.[A-Z_0-9]+" -AllMatches | ForEach-Object { $.Matches.Value } | Sort-Object -Unique | Out-File $out -Append -Encoding utf8
+Sec "leftover markers"
+Select-String -Path providers\*.js,routes\*.js,keys\*.js,crypto\*.js,net\*.js,memory\*.js,auth\*.js,server.js,test\*.js -Pattern "MUTATION|\.only\(|TODO|FIXME" | ForEach-Object { "{0}:{1}" -f $.Filename,$.LineNumber } | Out-File $out -Append -Encoding utf8
+Sec "secret-pattern files (names only)"
+git ls-files | Where-Object { $_ -match '\.(js|ts|tsx|json|md|html|css|sql)$' } | ForEach-Object { if (Select-String -LiteralPath $_ -Pattern 'AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9_-]{20,}|AQ\.Ab[0-9A-Za-z_-]{10,}' -Quiet) { $_ } } | Out-File $out -Append -Encoding utf8
+Sec "tests (tap summary)"
+node --test --test-concurrency=1 --test-reporter=tap test/*.test.js 2>&1 | Select-String "^# (tests|pass|fail|skipped)|^not ok|^    not ok" | Out-File $out -Append -Encoding utf8
+Sec "frontend lint/build"
+Push-Location graph-frontend; npm run lint 2>&1 | Select-Object -Last 12 | Out-File $out -Append -Encoding utf8; npm run build 2>&1 | Select-Object -Last 6 | Out-File $out -Append -Encoding utf8; Pop-Location
+Write-Host "Saved: $out"
+
+FULL OUTPUT FROM SCRIPT:
+
+== SNAPSHOT 2026-11-04T19:30:08 ==
+
+## git
+6028156 Add per-user memory scoping and Supabase auth: user_id on nodes, forUser stores, /me endpoint, claim-legacy script
+ca204cb Update frontend files
+e260bcb Update README: live frontend wiring, dashboard routes, proxy auth source
+2d83b52 Wire dashboard to gateway: live sessions/chat via vite proxy, merge auth, port 5173
+311d428 Cleanup: remove bun.lock, junk files; update chat route, tests, and README
+## main...origin/main [ahead 1]
+ M .env.example
+ M db/schema.sql
+ M graph-frontend/src/pages/dashboard/MemoryGraphPage.tsx
+ M memory/memory.js
+ M providers/claude.js
+ M providers/gemini.js
+ M providers/index.js
+ M providers/nvidia.js
+ M providers/openai.js
+ M providers/openaiCompat.js
+ M routes/chat.js
+ M server.js
+ M test/gateway.test.js
+ M test/memory.contract.test.js
+ M test/sessions.test.js
+?? crypto/
+?? docs/audit-2026-10.md
+?? docs/roadmap-2026-10.md
+?? graph-frontend/src/utils/sessionAdapter.ts
+?? graph-frontend/test/sessionAdapter.test.ts
+?? keys/
+?? net/
+?? npm_test_output.txt
+?? providers/safeFetch.js
+?? providers/userProviders.js
+?? routes/providerKeys.js
+?? test/chatProviders.test.js
+?? test/keyStore.contract.test.js
+?? test/keyVault.test.js
+?? test/providerFactories.test.js
+?? test/providerKeys.test.js
+?? test/ssrfGuard.test.js
+?? test/userProviders.test.js
+?? test_output.txt
+
+## files (lines)
+  148  auth\authenticators.js
+   70  crypto\keyVault.js
+   52  db\schema.sql
+  250  keys\keyStore.js
+  210  memory\fileStore.js
+  131  memory\memory.js
+   29  memory\pgPool.js
+  149  memory\pgStore.js
+    6  memory\store.js
+  208  net\ssrfGuard.js
+   79  providers\claude.js
+   29  providers\errorClassifier.js
+   87  providers\gemini.js
+   65  providers\index.js
+   19  providers\nvidia.js
+   83  providers\openai.js
+  121  providers\openaiCompat.js
+    4  providers\safeFetch.js
+   16  providers\timeout.js
+  130  providers\userProviders.js
+  227  routes\chat.js
+  270  routes\providerKeys.js
+   49  routes\sessions.js
+   41  scripts\claim-legacy.js
+   24  scripts\migrate.js
+  440  test\auth.test.js
+  454  test\chatProviders.test.js
+   80  test\claimLegacy.test.js
+ 1383  test\gateway.test.js
+  162  test\keyStore.contract.test.js
+   76  test\keyVault.test.js
+  631  test\memory.contract.test.js
+  341  test\providerFactories.test.js
+  451  test\providerKeys.test.js
+  154  test\sessions.test.js
+  109  test\ssrfGuard.test.js
+  322  test\userProviders.test.js
+   16  graph-frontend\node_modules\lucide-react\dist\esm\icons\server.js
+    2  graph-frontend\node_modules\react-dom\server.js
+  247  server.js
+    3  graph-frontend\node_modules\.vite\deps\package.json
+   32  graph-frontend\node_modules\@babel\code-frame\package.json
+   40  graph-frontend\node_modules\@babel\compat-data\package.json
+   84  graph-frontend\node_modules\@babel\core\package.json
+   39  graph-frontend\node_modules\@babel\generator\package.json
+   43  graph-frontend\node_modules\@babel\helper-compilation-targets\package.json
+   32  graph-frontend\node_modules\@babel\helper-globals\package.json
+   28  graph-frontend\node_modules\@babel\helper-module-imports\package.json
+   32  graph-frontend\node_modules\@babel\helper-module-transforms\package.json
+   24  graph-frontend\node_modules\@babel\helper-plugin-utils\package.json
+   31  graph-frontend\node_modules\@babel\helper-string-parser\package.json
+   31  graph-frontend\node_modules\@babel\helper-validator-identifier\package.json
+   27  graph-frontend\node_modules\@babel\helper-validator-option\package.json
+   31  graph-frontend\node_modules\@babel\helpers\package.json
+   50  graph-frontend\node_modules\@babel\parser\package.json
+   35  graph-frontend\node_modules\@babel\plugin-transform-react-jsx-self\package.json
+   35  graph-frontend\node_modules\@babel\plugin-transform-react-jsx-source\package.json
+   27  graph-frontend\node_modules\@babel\template\package.json
+   35  graph-frontend\node_modules\@babel\traverse\package.json
+   39  graph-frontend\node_modules\@babel\types\package.json
+   70  graph-frontend\node_modules\@dagrejs\dagre\package.json
+   70  graph-frontend\node_modules\@dagrejs\graphlib\package.json
+   20  graph-frontend\node_modules\@esbuild\win32-x64\package.json
+    6  graph-frontend\node_modules\@google\genai\node\package.json
+    6  graph-frontend\node_modules\@google\genai\web\package.json
+  176  graph-frontend\node_modules\@google\genai\package.json
+   67  graph-frontend\node_modules\@jridgewell\gen-mapping\package.json
+   71  graph-frontend\node_modules\@jridgewell\remapping\package.json
+   69  graph-frontend\node_modules\@jridgewell\resolve-uri\package.json
+   64  graph-frontend\node_modules\@jridgewell\sourcemap-codec\package.json
+   67  graph-frontend\node_modules\@jridgewell\trace-mapping\package.json
+   21  graph-frontend\node_modules\@protobufjs\aspromise\package.json
+   21  graph-frontend\node_modules\@protobufjs\base64\package.json
+   13  graph-frontend\node_modules\@protobufjs\codegen\package.json
+   21  graph-frontend\node_modules\@protobufjs\eventemitter\package.json
+   27  graph-frontend\node_modules\@protobufjs\fetch\package.json
+   26  graph-frontend\node_modules\@protobufjs\float\package.json
+   21  graph-frontend\node_modules\@protobufjs\path\package.json
+   21  graph-frontend\node_modules\@protobufjs\pool\package.json
+   21  graph-frontend\node_modules\@protobufjs\utf8\package.json
+   37  graph-frontend\node_modules\@rolldown\pluginutils\package.json
+   22  graph-frontend\node_modules\@rollup\rollup-win32-x64-gnu\package.json
+   22  graph-frontend\node_modules\@rollup\rollup-win32-x64-msvc\package.json
+   48  graph-frontend\node_modules\@tailwindcss\node\package.json
+   75  graph-frontend\node_modules\@tailwindcss\oxide\package.json
+   27  graph-frontend\node_modules\@tailwindcss\oxide-win32-x64-msvc\package.json
+   42  graph-frontend\node_modules\@tailwindcss\vite\package.json
+   51  graph-frontend\node_modules\@types\babel__core\package.json
+   43  graph-frontend\node_modules\@types\babel__generator\package.json
+   43  graph-frontend\node_modules\@types\babel__template\package.json
+   63  graph-frontend\node_modules\@types\babel__traverse\package.json
+   64  graph-frontend\node_modules\@types\body-parser\package.json
+   32  graph-frontend\node_modules\@types\connect\package.json
+   81  graph-frontend\node_modules\@types\d3\package.json
+   56  graph-frontend\node_modules\@types\d3-array\package.json
+   47  graph-frontend\node_modules\@types\d3-axis\package.json
+   42  graph-frontend\node_modules\@types\d3-brush\package.json
+   40  graph-frontend\node_modules\@types\d3-chord\package.json
+   55  graph-frontend\node_modules\@types\d3-color\package.json
+   38  graph-frontend\node_modules\@types\d3-contour\package.json
+   30  graph-frontend\node_modules\@types\d3-delaunay\package.json
+   51  graph-frontend\node_modules\@types\d3-dispatch\package.json
+   42  graph-frontend\node_modules\@types\d3-drag\package.json
+   45  graph-frontend\node_modules\@types\d3-dsv\package.json
+   40  graph-frontend\node_modules\@types\d3-ease\package.json
+   37  graph-frontend\node_modules\@types\d3-fetch\package.json
+   45  graph-frontend\node_modules\@types\d3-force\package.json
+   45  graph-frontend\node_modules\@types\d3-format\package.json
+   48  graph-frontend\node_modules\@types\d3-geo\package.json
+   50  graph-frontend\node_modules\@types\d3-hierarchy\package.json
+   47  graph-frontend\node_modules\@types\d3-interpolate\package.json
+   41  graph-frontend\node_modules\@types\d3-path\package.json
+   40  graph-frontend\node_modules\@types\d3-polygon\package.json
+   45  graph-frontend\node_modules\@types\d3-quadtree\package.json
+   41  graph-frontend\node_modules\@types\d3-random\package.json
+   53  graph-frontend\node_modules\@types\d3-scale\package.json
+   46  graph-frontend\node_modules\@types\d3-scale-chromatic\package.json
+   56  graph-frontend\node_modules\@types\d3-selection\package.json
+   53  graph-frontend\node_modules\@types\d3-shape\package.json
+   46  graph-frontend\node_modules\@types\d3-time\package.json
+   40  graph-frontend\node_modules\@types\d3-time-format\package.json
+   45  graph-frontend\node_modules\@types\d3-timer\package.json
+   47  graph-frontend\node_modules\@types\d3-transition\package.json
+   49  graph-frontend\node_modules\@types\d3-zoom\package.json
+   41  graph-frontend\node_modules\@types\dagre\package.json
+   27  graph-frontend\node_modules\@types\estree\package.json
+   46  graph-frontend\node_modules\@types\express\package.json
+   51  graph-frontend\node_modules\@types\express-serve-static-core\package.json
+   46  graph-frontend\node_modules\@types\geojson\package.json
+   36  graph-frontend\node_modules\@types\http-errors\package.json
+   30  graph-frontend\node_modules\@types\mime\package.json
+  130  graph-frontend\node_modules\@types\node\package.json
+   66  graph-frontend\node_modules\@types\qs\package.json
+   25  graph-frontend\node_modules\@types\range-parser\package.json
+   28  graph-frontend\node_modules\@types\retry\package.json
+   38  graph-frontend\node_modules\@types\send\package.json
+   39  graph-frontend\node_modules\@types\serve-static\node_modules\@types\send\package.json
+   45  graph-frontend\node_modules\@types\serve-static\package.json
+   77  graph-frontend\node_modules\@vitejs\plugin-react\package.json
+  108  graph-frontend\node_modules\@xyflow\react\package.json
+   79  graph-frontend\node_modules\@xyflow\system\package.json
+   47  graph-frontend\node_modules\accepts\package.json
+   46  graph-frontend\node_modules\agent-base\package.json
+   39  graph-frontend\node_modules\array-flatten\package.json
+   48  graph-frontend\node_modules\autoprefixer\package.json
+   47  graph-frontend\node_modules\base64-js\package.json
+   68  graph-frontend\node_modules\baseline-browser-mapping\package.json
+   60  graph-frontend\node_modules\bignumber.js\package.json
+   49  graph-frontend\node_modules\body-parser\node_modules\debug\package.json
+   46  graph-frontend\node_modules\body-parser\node_modules\iconv-lite\package.json
+   37  graph-frontend\node_modules\body-parser\node_modules\ms\package.json
+   55  graph-frontend\node_modules\body-parser\package.json
+   45  graph-frontend\node_modules\browserslist\package.json
+   21  graph-frontend\node_modules\buffer-equal-constant-time\package.json
+   42  graph-frontend\node_modules\bytes\package.json
+   85  graph-frontend\node_modules\call-bind-apply-helpers\package.json
+   99  graph-frontend\node_modules\call-bound\package.json
+   34  graph-frontend\node_modules\caniuse-lite\package.json
+   38  graph-frontend\node_modules\classcat\package.json
+   68  graph-frontend\node_modules\commander\package.json
+   44  graph-frontend\node_modules\content-disposition\package.json
+   42  graph-frontend\node_modules\content-type\package.json
+   38  graph-frontend\node_modules\convert-source-map\package.json
+   44  graph-frontend\node_modules\cookie\package.json
+   18  graph-frontend\node_modules\cookie-signature\package.json
+   92  graph-frontend\node_modules\d3\package.json
+   61  graph-frontend\node_modules\d3-array\package.json
+   54  graph-frontend\node_modules\d3-axis\package.json
+   55  graph-frontend\node_modules\d3-brush\package.json
+   54  graph-frontend\node_modules\d3-chord\package.json
+   54  graph-frontend\node_modules\d3-color\package.json
+   66  graph-frontend\node_modules\d3-contour\package.json
+   62  graph-frontend\node_modules\d3-delaunay\package.json
+   50  graph-frontend\node_modules\d3-dispatch\package.json
+   54  graph-frontend\node_modules\d3-drag\package.json
+   68  graph-frontend\node_modules\d3-dsv\package.json
+   51  graph-frontend\node_modules\d3-ease\package.json
+   53  graph-frontend\node_modules\d3-fetch\package.json
+   58  graph-frontend\node_modules\d3-force\package.json
+   56  graph-frontend\node_modules\d3-format\package.json
+   59  graph-frontend\node_modules\d3-geo\package.json
+   56  graph-frontend\node_modules\d3-hierarchy\package.json
+   53  graph-frontend\node_modules\d3-interpolate\package.json
+   54  graph-frontend\node_modules\d3-path\package.json
+   51  graph-frontend\node_modules\d3-polygon\package.json
+   49  graph-frontend\node_modules\d3-quadtree\package.json
+   51  graph-frontend\node_modules\d3-random\package.json
+   57  graph-frontend\node_modules\d3-scale\package.json
+   55  graph-frontend\node_modules\d3-scale-chromatic\package.json
+   51  graph-frontend\node_modules\d3-selection\package.json
+   55  graph-frontend\node_modules\d3-shape\package.json
+   53  graph-frontend\node_modules\d3-time\package.json
+   60  graph-frontend\node_modules\d3-time-format\package.json
+   53  graph-frontend\node_modules\d3-timer\package.json
+   65  graph-frontend\node_modules\d3-transition\package.json
+   57  graph-frontend\node_modules\d3-zoom\package.json
+   62  graph-frontend\node_modules\data-uri-to-buffer\package.json
+   64  graph-frontend\node_modules\debug\package.json
+   50  graph-frontend\node_modules\delaunator\package.json
+   45  graph-frontend\node_modules\depd\package.json
+   48  graph-frontend\node_modules\destroy\package.json
+   44  graph-frontend\node_modules\detect-libc\package.json
+   62  graph-frontend\node_modules\dotenv\package.json
+   76  graph-frontend\node_modules\dunder-proto\package.json
+   46  graph-frontend\node_modules\ecdsa-sig-formatter\package.json
+   29  graph-frontend\node_modules\ee-first\package.json
+   43  graph-frontend\node_modules\electron-to-chromium\package.json
+   40  graph-frontend\node_modules\encodeurl\package.json
+   84  graph-frontend\node_modules\enhanced-resolve\package.json
+   81  graph-frontend\node_modules\es-define-property\package.json
+   80  graph-frontend\node_modules\es-errors\package.json
+   79  graph-frontend\node_modules\es-object-atoms\package.json
+   49  graph-frontend\node_modules\esbuild\package.json
+   74  graph-frontend\node_modules\escalade\package.json
+   24  graph-frontend\node_modules\escape-html\package.json
+   47  graph-frontend\node_modules\etag\package.json
+   49  graph-frontend\node_modules\express\node_modules\debug\package.json
+   37  graph-frontend\node_modules\express\node_modules\ms\package.json
+  102  graph-frontend\node_modules\express\package.json
+   42  graph-frontend\node_modules\extend\package.json
+  103  graph-frontend\node_modules\fdir\package.json
+   56  graph-frontend\node_modules\fetch-blob\package.json
+   49  graph-frontend\node_modules\finalhandler\node_modules\debug\package.json
+   37  graph-frontend\node_modules\finalhandler\node_modules\ms\package.json
+   47  graph-frontend\node_modules\finalhandler\package.json
+   50  graph-frontend\node_modules\formdata-polyfill\package.json
+   45  graph-frontend\node_modules\forwarded\package.json
+   81  graph-frontend\node_modules\fraction.js\package.json
+    6  graph-frontend\node_modules\framer-motion\client\package.json
+    6  graph-frontend\node_modules\framer-motion\dom\mini\package.json
+    6  graph-frontend\node_modules\framer-motion\dom\package.json
+    6  graph-frontend\node_modules\framer-motion\m\package.json
+    6  graph-frontend\node_modules\framer-motion\mini\package.json
+  148  graph-frontend\node_modules\framer-motion\package.json
+   46  graph-frontend\node_modules\fresh\package.json
+   87  graph-frontend\node_modules\function-bind\package.json
+    1  graph-frontend\node_modules\gaxios\build\esm\package.json
+  105  graph-frontend\node_modules\gaxios\package.json
+   77  graph-frontend\node_modules\gcp-metadata\package.json
+   37  graph-frontend\node_modules\gensync\package.json
+   97  graph-frontend\node_modules\get-intrinsic\package.json
+   81  graph-frontend\node_modules\get-proto\package.json
+   90  graph-frontend\node_modules\google-auth-library\package.json
+   45  graph-frontend\node_modules\google-logging-utils\package.json
+   77  graph-frontend\node_modules\gopd\package.json
+   53  graph-frontend\node_modules\graceful-fs\package.json
+  111  graph-frontend\node_modules\has-symbols\package.json
+   91  graph-frontend\node_modules\hasown\package.json
+   54  graph-frontend\node_modules\http-errors\package.json
+   50  graph-frontend\node_modules\https-proxy-agent\package.json
+   44  graph-frontend\node_modules\iconv-lite\package.json
+   29  graph-frontend\node_modules\inherits\package.json
+   43  graph-frontend\node_modules\internmap\package.json
+   35  graph-frontend\node_modules\ipaddr.js\package.json
+  146  graph-frontend\node_modules\jiti\package.json
+   30  graph-frontend\node_modules\js-tokens\package.json
+   56  graph-frontend\node_modules\jsesc\package.json
+   34  graph-frontend\node_modules\json-bigint\package.json
+   72  graph-frontend\node_modules\json5\package.json
+   37  graph-frontend\node_modules\jwa\package.json
+   34  graph-frontend\node_modules\jws\package.json
+  110  graph-frontend\node_modules\lightningcss\package.json
+   34  graph-frontend\node_modules\lightningcss-win32-x64-msvc\package.json
+    3  graph-frontend\node_modules\long\umd\package.json
+   58  graph-frontend\node_modules\long\package.json
+   32  graph-frontend\node_modules\lru-cache\package.json
+   74  graph-frontend\node_modules\lucide-react\package.json
+   67  graph-frontend\node_modules\magic-string\package.json
+   86  graph-frontend\node_modules\math-intrinsics\package.json
+   26  graph-frontend\node_modules\media-typer\package.json
+   39  graph-frontend\node_modules\merge-descriptors\package.json
+   36  graph-frontend\node_modules\methods\package.json
+   44  graph-frontend\node_modules\mime\package.json
+   60  graph-frontend\node_modules\mime-db\package.json
+   44  graph-frontend\node_modules\mime-types\package.json
+    6  graph-frontend\node_modules\motion\mini\package.json
+    6  graph-frontend\node_modules\motion\react\package.json
+    6  graph-frontend\node_modules\motion\react-client\package.json
+    6  graph-frontend\node_modules\motion\react-m\package.json
+   99  graph-frontend\node_modules\motion\package.json
+   40  graph-frontend\node_modules\motion-dom\package.json
+   26  graph-frontend\node_modules\motion-utils\package.json
+   38  graph-frontend\node_modules\ms\package.json
+   12  graph-frontend\node_modules\nanoid\async\package.json
+    6  graph-frontend\node_modules\nanoid\non-secure\package.json
+    6  graph-frontend\node_modules\nanoid\url-alphabet\package.json
+   89  graph-frontend\node_modules\nanoid\package.json
+   42  graph-frontend\node_modules\negotiator\package.json
+   29  graph-frontend\node_modules\node-domexception\package.json
+  131  graph-frontend\node_modules\node-fetch\package.json
+   28  graph-frontend\node_modules\node-releases\package.json
+  105  graph-frontend\node_modules\object-inspect\package.json
+   43  graph-frontend\node_modules\on-finished\package.json
+   51  graph-frontend\node_modules\p-retry\package.json
+   40  graph-frontend\node_modules\parseurl\package.json
+   30  graph-frontend\node_modules\path-to-regexp\package.json
+   25  graph-frontend\node_modules\picocolors\package.json
+   83  graph-frontend\node_modules\picomatch\package.json
+   88  graph-frontend\node_modules\postcss\package.json
+   58  graph-frontend\node_modules\postcss-value-parser\package.json
+  119  graph-frontend\node_modules\protobufjs\package.json
+   51  graph-frontend\node_modules\proxy-addr\package.json
+   95  graph-frontend\node_modules\qs\package.json
+   44  graph-frontend\node_modules\range-parser\package.json
+   46  graph-frontend\node_modules\raw-body\node_modules\iconv-lite\package.json
+   47  graph-frontend\node_modules\raw-body\package.json
+   51  graph-frontend\node_modules\react\package.json
+  117  graph-frontend\node_modules\react-dom\package.json
+   38  graph-frontend\node_modules\react-refresh\package.json
+   47  graph-frontend\node_modules\react-router\node_modules\cookie\package.json
+  164  graph-frontend\node_modules\react-router\package.json
+   82  graph-frontend\node_modules\react-router-dom\package.json
+   36  graph-frontend\node_modules\retry\package.json
+   45  graph-frontend\node_modules\robust-predicates\package.json
+    1  graph-frontend\node_modules\rollup\dist\es\package.json
+  299  graph-frontend\node_modules\rollup\package.json
+   32  graph-frontend\node_modules\rw\package.json
+   51  graph-frontend\node_modules\safe-buffer\package.json
+   34  graph-frontend\node_modules\safer-buffer\package.json
+   27  graph-frontend\node_modules\scheduler\package.json
+   38  graph-frontend\node_modules\semver\package.json
+   37  graph-frontend\node_modules\send\node_modules\debug\node_modules\ms\package.json
+   49  graph-frontend\node_modules\send\node_modules\debug\package.json
+   62  graph-frontend\node_modules\send\package.json
+   42  graph-frontend\node_modules\serve-static\package.json
+   45  graph-frontend\node_modules\set-cookie-parser\package.json
+   38  graph-frontend\node_modules\setprototypeof\package.json
+   85  graph-frontend\node_modules\side-channel\package.json
+   77  graph-frontend\node_modules\side-channel-list\package.json
+   80  graph-frontend\node_modules\side-channel-map\package.json
+   87  graph-frontend\node_modules\side-channel-weakmap\package.json
+   71  graph-frontend\node_modules\source-map-js\package.json
+   49  graph-frontend\node_modules\statuses\package.json
+   89  graph-frontend\node_modules\tailwindcss\package.json
+   65  graph-frontend\node_modules\tapable\package.json
+   70  graph-frontend\node_modules\tinyglobby\package.json
+   38  graph-frontend\node_modules\toidentifier\package.json
+    3  graph-frontend\node_modules\tslib\modules\package.json
+   47  graph-frontend\node_modules\tslib\package.json
+   20  graph-frontend\node_modules\tsx\node_modules\@esbuild\win32-x64\package.json
+   74  graph-frontend\node_modules\tsx\node_modules\esbuild\package.json
+   70  graph-frontend\node_modules\tsx\package.json
+   45  graph-frontend\node_modules\type-is\package.json
+  120  graph-frontend\node_modules\typescript\package.json
+   55  graph-frontend\node_modules\undici-types\package.json
+   27  graph-frontend\node_modules\unpipe\package.json
+   40  graph-frontend\node_modules\update-browserslist-db\package.json
+   43  graph-frontend\node_modules\use-sync-external-store\package.json
+   40  graph-frontend\node_modules\utils-merge\package.json
+   43  graph-frontend\node_modules\vary\package.json
+    4  graph-frontend\node_modules\vite\types\package.json
+  204  graph-frontend\node_modules\vite\package.json
+   14  graph-frontend\node_modules\web-streams-polyfill\es2018\package.json
+   14  graph-frontend\node_modules\web-streams-polyfill\es6\package.json
+   13  graph-frontend\node_modules\web-streams-polyfill\ponyfill\es2018\package.json
+   13  graph-frontend\node_modules\web-streams-polyfill\ponyfill\es6\package.json
+   13  graph-frontend\node_modules\web-streams-polyfill\ponyfill\package.json
+   83  graph-frontend\node_modules\web-streams-polyfill\package.json
+   74  graph-frontend\node_modules\ws\package.json
+   29  graph-frontend\node_modules\yallist\package.json
+  232  graph-frontend\node_modules\zustand\package.json
+   42  graph-frontend\package.json
+  242  node_modules\@anthropic-ai\sdk\package.json
+    3  node_modules\@babel\runtime\helpers\esm\package.json
+ 1107  node_modules\@babel\runtime\package.json
+    6  node_modules\@google\genai\node\package.json
+    6  node_modules\@google\genai\web\package.json
+  177  node_modules\@google\genai\package.json
+   21  node_modules\@protobufjs\aspromise\package.json
+   21  node_modules\@protobufjs\base64\package.json
+   13  node_modules\@protobufjs\codegen\package.json
+   21  node_modules\@protobufjs\eventemitter\package.json
+   27  node_modules\@protobufjs\fetch\package.json
+   26  node_modules\@protobufjs\float\package.json
+   21  node_modules\@protobufjs\path\package.json
+   21  node_modules\@protobufjs\pool\package.json
+   21  node_modules\@protobufjs\utf8\package.json
+   25  node_modules\@stablelib\base64\package.json
+  155  node_modules\@types\node\package.json
+  210  node_modules\@types\react\package.json
+  128  node_modules\@types\react-dom\package.json
+   28  node_modules\@types\retry\package.json
+   45  node_modules\@typescript\typescript-win32-x64\package.json
+   47  node_modules\accepts\package.json
+   46  node_modules\agent-base\package.json
+   47  node_modules\base64-js\package.json
+   60  node_modules\bignumber.js\package.json
+   52  node_modules\body-parser\node_modules\content-type\package.json
+   65  node_modules\body-parser\package.json
+   21  node_modules\buffer-equal-constant-time\package.json
+   42  node_modules\bytes\package.json
+   85  node_modules\call-bind-apply-helpers\package.json
+   99  node_modules\call-bound\package.json
+   40  node_modules\content-disposition\package.json
+   42  node_modules\content-type\package.json
+   44  node_modules\cookie\package.json
+   24  node_modules\cookie-signature\package.json
+   70  node_modules\csstype\package.json
+   62  node_modules\data-uri-to-buffer\package.json
+   64  node_modules\debug\package.json
+   45  node_modules\depd\package.json
+   62  node_modules\dotenv\package.json
+   76  node_modules\dunder-proto\package.json
+   46  node_modules\ecdsa-sig-formatter\package.json
+   29  node_modules\ee-first\package.json
+   40  node_modules\encodeurl\package.json
+   81  node_modules\es-define-property\package.json
+   80  node_modules\es-errors\package.json
+   79  node_modules\es-object-atoms\package.json
+   24  node_modules\escape-html\package.json
+   47  node_modules\etag\package.json
+   99  node_modules\express\package.json
+   42  node_modules\extend\package.json
+   42  node_modules\fast-sha256\package.json
+   56  node_modules\fetch-blob\package.json
+   47  node_modules\finalhandler\package.json
+   50  node_modules\formdata-polyfill\package.json
+   45  node_modules\forwarded\package.json
+   46  node_modules\fresh\package.json
+   87  node_modules\function-bind\package.json
+    1  node_modules\gaxios\build\esm\package.json
+  105  node_modules\gaxios\package.json
+   77  node_modules\gcp-metadata\package.json
+   97  node_modules\get-intrinsic\package.json
+   81  node_modules\get-proto\package.json
+   90  node_modules\google-auth-library\package.json
+   45  node_modules\google-logging-utils\package.json
+   77  node_modules\gopd\package.json
+  111  node_modules\has-symbols\package.json
+   91  node_modules\hasown\package.json
+   54  node_modules\http-errors\package.json
+   50  node_modules\https-proxy-agent\package.json
+   70  node_modules\iconv-lite\package.json
+   29  node_modules\inherits\package.json
+   35  node_modules\ipaddr.js\package.json
+   30  node_modules\is-promise\package.json
+   34  node_modules\json-bigint\package.json
+   89  node_modules\json-schema-to-ts\package.json
+   37  node_modules\jwa\package.json
+   34  node_modules\jws\package.json
+    3  node_modules\long\umd\package.json
+   58  node_modules\long\package.json
+   86  node_modules\math-intrinsics\package.json
+   37  node_modules\media-typer\package.json
+   50  node_modules\merge-descriptors\package.json
+   56  node_modules\mime-db\package.json
+   49  node_modules\mime-types\package.json
+   38  node_modules\ms\package.json
+   52  node_modules\negotiator\node_modules\content-type\package.json
+   49  node_modules\negotiator\package.json
+   29  node_modules\node-domexception\package.json
+  131  node_modules\node-fetch\package.json
+  105  node_modules\object-inspect\package.json
+   39  node_modules\on-finished\package.json
+   33  node_modules\once\package.json
+  314  node_modules\openai\package.json
+   51  node_modules\p-retry\package.json
+   40  node_modules\parseurl\package.json
+   64  node_modules\path-to-regexp\package.json
+   76  node_modules\pg\package.json
+   39  node_modules\pg-cloudflare\package.json
+   51  node_modules\pg-connection-string\package.json
+   24  node_modules\pg-int8\package.json
+   51  node_modules\pg-pool\package.json
+   44  node_modules\pg-protocol\package.json
+   42  node_modules\pg-types\package.json
+   41  node_modules\pgpass\package.json
+   35  node_modules\postgres-array\package.json
+   34  node_modules\postgres-bytea\package.json
+   33  node_modules\postgres-date\package.json
+   36  node_modules\postgres-interval\package.json
+  119  node_modules\protobufjs\package.json
+   51  node_modules\proxy-addr\package.json
+   95  node_modules\qs\package.json
+   48  node_modules\range-parser\package.json
+   46  node_modules\raw-body\package.json
+   36  node_modules\retry\package.json
+   44  node_modules\router\package.json
+   51  node_modules\safe-buffer\package.json
+   34  node_modules\safer-buffer\package.json
+   63  node_modules\send\package.json
+   44  node_modules\serve-static\package.json
+   38  node_modules\setprototypeof\package.json
+   85  node_modules\side-channel\package.json
+   77  node_modules\side-channel-list\package.json
+   80  node_modules\side-channel-map\package.json
+   87  node_modules\side-channel-weakmap\package.json
+   39  node_modules\split2\package.json
+   39  node_modules\standardwebhooks\package.json
+   49  node_modules\statuses\package.json
+   38  node_modules\toidentifier\package.json
+   59  node_modules\ts-algebra\package.json
+   52  node_modules\type-is\node_modules\content-type\package.json
+   51  node_modules\type-is\package.json
+   54  node_modules\typescript\vendor\vscode-jsonrpc\package.json
+   87  node_modules\typescript\package.json
+   55  node_modules\undici-types\package.json
+   27  node_modules\unpipe\package.json
+   43  node_modules\vary\package.json
+   14  node_modules\web-streams-polyfill\es2018\package.json
+   14  node_modules\web-streams-polyfill\es6\package.json
+   13  node_modules\web-streams-polyfill\ponyfill\es2018\package.json
+   13  node_modules\web-streams-polyfill\ponyfill\es6\package.json
+   13  node_modules\web-streams-polyfill\ponyfill\package.json
+   83  node_modules\web-streams-polyfill\package.json
+   29  node_modules\wrappy\package.json
+   74  node_modules\ws\package.json
+   55  node_modules\xtend\package.json
+   43  package.json
+
+## routes
+server.js:90: app.use((req, res, next) => {
+server.js:133: app.use('/chat', requireAuth);
+server.js:134: app.use('/sessions', requireAuth);
+server.js:135: app.use(express.json());
+server.js:137: app.post("/chat", createChatHandler(providers, memory, { providerTimeoutMs, resolveProviders }));
+server.js:138: app.get("/providers", requireAuth, async (req, res) => {
+server.js:151: app.get("/me", requireAuth, (req, res) => {
+server.js:154: app.use('/me/providers', requireAuth);
+server.js:155: app.use('/me/provider-order', requireAuth);
+server.js:156: app.use('/me', createProviderKeysRouter({ keyStore, keyVault, ssrfGuard }));
+server.js:157: app.get("/sessions", sessionsRouter.listSessions);
+server.js:158: app.get("/sessions/:id/nodes", sessionsRouter.getSessionNodes);
+server.js:160: app.get("/health", (req, res) => {
+server.js:164: app.use((err, req, res, next) => {
+providerKeys.js:73: router.get('/providers', async (req, res) => {
+providerKeys.js:86: router.put('/providers/:name', async (req, res) => {
+providerKeys.js:237: router.delete('/providers/:name', async (req, res) => {
+providerKeys.js:257: router.put('/provider-order', async (req, res) => {
+
+## env names used
+process.env.ALLOW_UNAUTHENTICATED
+process.env.ANTHROPIC_API_KEY
+process.env.CORS_ORIGIN
+process.env.DATABASE_URL
+process.env.DISABLE_LEGACY_TOKEN
+process.env.GATEWAY_API_TOKEN
+process.env.GEMINI_API_KEY
+process.env.KEY_ENCRYPTION_SECRET
+process.env.OPENAI_API_KEY
+process.env.OWNER_USER_ID
+process.env.PORT
+process.env.REQUIRE_DATABASE
+process.env.SESSIONS_DIR
+process.env.SUPABASE_ANON_KEY
+process.env.SUPABASE_URL
+
+## leftover markers
+
+## secret-pattern files (names only)
+graph-frontend/src/pages/OnboardingPage.tsx
+test/gateway.test.js
+
+## tests (tap summary)
+
+not ok 2 - test\\chatProviders.test.js
+not ok 57 - GET /providers lists enabled provider names
+not ok 67 - F4: GET /providers requires the Bearer token
+not ok 68 - F5: GET /providers returns names/status only ΓÇö no secrets, keys, or URLs
+    not ok 1 - client created with given apiKey
+not ok 101 - openai_compat factory
+not ok 109 - buildProviders: only OPENAI_API_KEY and OPENAI_MODEL=x -> one provider named openai with model x
+not ok 112 - P1: authenticated session with id null (legacy token) returns 403 account_required on all key routes
+not ok 113 - P1b: unauthenticated request returns 401 on key routes
+not ok 114 - P2: create returns 201, no api_key/key_ciphertext anywhere in response, provider listed; extended leak 
+checks
+not ok 115 - P3: stored key decrypts with aad `${userId}:${name}`, key_last4 is the last 4 of api_key
+not ok 116 - P4: openai_compat without base_url is 400 validation; with http:// is 400 unsafe_base_url; with https:// 
+it is created
+not ok 117 - P5: update without api_key keeps key intact; kind cannot change; response rows stay clean
+not ok 118 - P6: POST /chat still works for a legacy session when provider keys are configured
+not ok 119 - P7: GET /providers when storage fails returns 503 internal_error, no crash, no material
+not ok 120 - P8b: 10 keys accepted, the 11th is 400 limit_reached
+not ok 121 - P9: DELETE returns 204; second DELETE is 404 not_found; list no longer contains it
+not ok 122 - P10: provider-order reorders; unknown/incomplete/duplicate all 400 validation
+not ok 123 - P11: CORS preflight on key routes allows PUT/DELETE from an allowed origin
+not ok 125 - P13: bad name/kind/label/api_key/priority all 400 validation with message
+not ok 126 - P14: PUT to create without api_key returns 400 validation
+not ok 127 - P15: a broken vault never leaks plaintext or ciphertext in the http response
+not ok 128 - P16: cross-user HTTP isolation
+not ok 129 - P17: update with only kind and enabled:false keeps label, model, priority, and key
+not ok 130 - P18: openai_compat update without base_url keeps stored base_url
+not ok 131 - P19: openai_compat update with unsafe base_url -> 400 unsafe_base_url
+not ok 146 - U5 owner with an enabled row -> only that provider (no env provider)
+# tests 237
+# pass 210
+# fail 27
+# skipped 0
+
+
+
+## frontend lint/build
+  Type '(eds: Edge[]) => (Edge | { style: { stroke: "#818cf8" | "#4f5263"; strokeWidth: number; accentColor?: AccentColor; alignContent?: AlignContent; ... 852 more ...; glyphOrientationVertical?: GlyphOrientationVertical; }; ... 27 more ...; domAttributes?: Omit<...>; } | { ...; })[]' is not assignable to type '(prevState: Edge[]) => Edge[]'.
+    Type '(Edge | { style: { stroke: "#818cf8" | "#4f5263"; strokeWidth: number; accentColor?: AccentColor; alignContent?: AlignContent; alignItems?: AlignItems; ... 851 more ...; glyphOrientationVertical?: GlyphOrientationVertical; }; ... 27 more ...; domAttributes?: Omit<...>; } | { ...; })[]' is not assignable to type 'Edge[]'.
+      Type 'Edge | { style: { stroke: "#818cf8" | "#4f5263"; strokeWidth: number; accentColor?: AccentColor; alignContent?: AlignContent; alignItems?: AlignItems; ... 851 more ...; glyphOrientationVertical?: GlyphOrientationVertical; }; ... 27 more ...; domAttributes?: Omit<...>; } | { ...; }' is not assignable to type 'Edge'.
+        Type '{ style: { stroke: "#818cf8" | "#4f5263"; strokeWidth: number; accentColor?: Property.AccentColor | undefined; alignContent?: Property.AlignContent | undefined; ... 852 more ...; glyphOrientationVertical?: Property.GlyphOrientationVertical | undefined; }; ... 27 more ...; domAttributes?: Omit<React.SVGAttributes<SVG...' is not assignable to type 'Edge'.
+          Type '{ style: { stroke: "#818cf8" | "#4f5263"; strokeWidth: number; accentColor?: Property.AccentColor | undefined; alignContent?: Property.AlignContent | undefined; ... 852 more ...; glyphOrientationVertical?: Property.GlyphOrientationVertical | undefined; }; ... 27 more ...; domAttributes?: Omit<React.SVGAttributes<SVG...' is not assignable to type 'EdgeBase<Record<string, unknown>, string>'.
+            Types of property 'markerEnd' are incompatible.
+              Type '{ color: string; type?: MarkerType | `${MarkerType}`; width?: number; height?: number; markerUnits?: string; orient?: string; strokeWidth?: number; }' is not assignable to type 'EdgeMarkerType'.
+                Type '{ color: string; type?: MarkerType | `${MarkerType}`; width?: number; height?: number; markerUnits?: string; orient?: string; strokeWidth?: number; }' is not assignable to type 'EdgeMarker'.
+                  Property 'type' is optional in type '{ color: string; type?: "arrow" | "arrowclosed" | MarkerType; width?: number; height?: number; markerUnits?: string; orient?: string; strokeWidth?: number; }' but required in type 'EdgeMarker'.
+src/pages/settings/ProviderKeysPage.tsx(272,37): error TS2551: Property 'lastTested' does not exist on type 'ProviderKeyConfig'. Did you mean 'lastTestedAt'?
+src/pages/settings/ProviderKeysPage.tsx(274,49): error TS2551: Property 'lastTested' does not exist on type 'ProviderKeyConfig'. Did you mean 'lastTestedAt'?
+src/pages/settings/ProviderKeysPage.tsx(274,72): error TS2551: Property 'lastLatencyMs' does not exist on type 'ProviderKeyConfig'. Did you mean 'latencyMs'?
+[32mΓ£ô built in 3.90s[39m
+node.exe : [33m
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+

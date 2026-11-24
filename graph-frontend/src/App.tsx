@@ -6,7 +6,7 @@ import { registerUnauthorizedHandler } from './api/http';
 import { supabaseConfigured } from './lib/supabase';
 import { ErrorBoundary } from './components/app/ErrorBoundary';
 import { AppLayout } from './components/app/AppLayout';
-import { AccountPage } from './components/app/AccountPage';
+
 
 const DashboardProvider = lazy(() => import('./context/DashboardContext').then(m => ({ default: m.DashboardProvider })));
 
