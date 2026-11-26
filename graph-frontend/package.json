@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.119.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/d3": "^7.4.3",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^5.0.4",
     "@xyflow/react": "^12.11.6",
     "d3": "^7.9.0",
@@ -28,6 +29,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-router-dom": "^7.18.4",
+    "three": "^0.187.0",
     "vgpu": "^0.6.0",
     "vite": "^6.2.3"
   },
